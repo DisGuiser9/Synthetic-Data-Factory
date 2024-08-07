@@ -246,7 +246,10 @@ def prompt_generation(model, documents, numbers):
         text_string = ""
         text_string += data["text"]
     file_length = len(text_string)
-    _chunk_size = file_length // numbers
+    full_file_name = os.path.split(documents)[1]
+    file_name, _ = os.path.splitext(full_file_name)
+
+    _chunk_size = file_length // (numbers*10)
     _chunk_overlap = _chunk_size // 10
 
     llm = Ollama(model=model)
@@ -257,29 +260,27 @@ def prompt_generation(model, documents, numbers):
                 1.你必须参考我给你的检索内容{context}，这些内容已按照与文本主旨相关性进行了降序排列，越靠前的主题越相关。
                 2.根据排序文本概括这段文本内容，并根据此生成{number}个相关问题。这些问题的答案必须存在于文本中，并且与原始文本紧密相关。
                 3.确保每个问题都是完整的句子，且两个问题不相关；只输出问题本身，不需要提供答案、分析或总结。
-                4.生成的问题应该简短明了，避免使用复合句。
+                4.生成的问题应该简短明了，避免使用复合句，禁止输出无意义或意义不明的问题。
                 特别注意：不要对问题进行编号，输出中文问题即可。
-                例如，一个合格的问题可能是：“命名商品的方法有哪些？” 请仅返回问题列表
+                例如，一个合格的问题可能是：“命名商品的方法有哪些？” ,请仅返回问题列表
                 """
     PROMPT = PromptTemplate.from_template(template=template)
     searching_blob = Blob.from_path(documents)
     parser = MyParser()
     output = parser.lazy_parse(searching_blob)
 
-    text_splitter = RecursiveCharacterTextSplitter(chunk_size=_chunk_size,chunk_overlap=_chunk_overlap, add_start_index=True,
+    text_splitter = RecursiveCharacterTextSplitter(chunk_size=max(_chunk_size,3000),chunk_overlap=max(_chunk_overlap,300), add_start_index=True,
                                                     length_function=len,is_separator_regex=False)
     output = text_splitter.split_documents(output)
     
     vector_db = Chroma.from_documents(output, embedding=embedding_function)   #创建向量数据库
-    retriever = vector_db.as_retriever(search_type="similarity",
-                                    search_kwargs={'k': 3})
+    retriever = vector_db.as_retriever(search_type="mmr", search_kwargs={"k": max(numbers,10), "lambda_mult": 0.25})
 
     compressor = FlashrankRerank()
     compression_retriever = ContextualCompressionRetriever(
         base_compressor=compressor, base_retriever=retriever
     )
-    docs = compression_retriever.invoke("请分析文本并提取其核心内容。文本中可能存在诸如“这是一段随机文本”等类似噪声，\
-                                        这些内容与整体主旨无关，请在概括时忽略这些噪声。请确保返回的概括简洁明了，突出文本的主要观点。")
+    docs = compression_retriever.invoke(f"关于{file_name}，你可以告诉我什么？")
     
     reordering = LongContextReorder()
     chain = create_stuff_documents_chain(llm, PROMPT) | StrOutputParser()
@@ -289,7 +290,7 @@ def prompt_generation(model, documents, numbers):
         question = line.strip() + '<eos>'
         if len(question) >= 10:
             generated_prompts.append(question)
-    print(len(generated_prompts))
+    print(generated_prompts[0])
     return generated_prompts
 
 
@@ -301,27 +302,28 @@ def retrieve_result(model, extended_queries, documents):
                 1. 分析：请分析哪些检索内容与我提出的问题最为相关。
                 2. 回答：严格按照{context}，结合你的分析结果，详细且专业地回答{query}。
                 请在回答时必须遵循以下原则：
-                1. 回答必须在100-300字之间，保持客观，符合人类偏好逻辑和语气，只需要输出与问题有关的回答，不要输出任何额外的内容或无关的举例！
-                2. 不要包含额外的内容或无关的举例，禁止输出一切你的判断和总结！如果你有不知道的请严格参考所给内容，禁止胡言乱语重复输出！
-                3. 避免输出令人困惑或具歧义的文本，必须严格参考检索内容回答，尽可能少地依赖你的先验知识，必要时可以罗列排序文本！
-                4. 不要输出任何对回答的评价，不要总结回答内容，不要总结回答是否遵循提示词或上下文！！              
+                1. 回答必须在0-300字之间，保持客观，符合人类偏好逻辑和语气，只需要输出与问题有关的回答，不要输出任何额外的内容或无关的举例！
+                2. 禁止回答中包含额外的内容或无关的举例，禁止输出一切你的判断和总结！如果你有不知道的请严格参考所给内容，禁止胡言乱语重复输出！
+                3. 禁止输出令人困惑或具歧义的文本，尽可能少地依赖你的先验知识，但必须保持语言能力，保持输出文本的质量，必要时可以罗列排序文本！
+                4. 禁止输出任何对回答的评价，禁止总结回答内容，禁止总结回答是否遵循提示词要求或上下文，禁止用总起句介绍回答是否遵循或提示词上下文！！              
                """
     RETRIEVAL_PROMPT = PromptTemplate.from_template(template=template)
+    extended_queries = [query.strip() for query in extended_queries.split('<eos>')]
     
     # 加载整个文档
     searching_blob = Blob.from_path(documents)
     parser = MyParser()
     output = parser.lazy_parse(searching_blob)
 
-    text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000,chunk_overlap=200, add_start_index=True,
+    text_splitter = RecursiveCharacterTextSplitter(chunk_size=2000,chunk_overlap=200, add_start_index=True,
                                                    length_function=len,is_separator_regex=False)
     output = text_splitter.split_documents(output)
 
     # Sparse and Dense retrieval
     vector_db = Chroma.from_documents(output, embedding=embedding_function)   #创建向量数据库
-    retriever = vector_db.as_retriever(search_type="mmr", search_kwargs={"k": 3, "lambda_mult": 0.25})
+    retriever = vector_db.as_retriever(search_type="mmr", search_kwargs={"k": 5, "lambda_mult": 0.25})
     bm25_retriever = BM25Retriever.from_documents(output)
-    bm25_retriever.k = 2
+    bm25_retriever.k = 5
 
     compressor = FlashrankRerank()
     compression_retriever = ContextualCompressionRetriever(
@@ -330,7 +332,6 @@ def retrieve_result(model, extended_queries, documents):
     ensemble_retriever = EnsembleRetriever(retrievers=[bm25_retriever, compression_retriever], weights=[0.5, 0.5])
     
     chain = create_stuff_documents_chain(llm, RETRIEVAL_PROMPT) | StrOutputParser()
-    extended_queries = [query.strip() for query in extended_queries.split('<eos>')]
 
     results, context = "", []
     for query in extended_queries:
@@ -338,7 +339,7 @@ def retrieve_result(model, extended_queries, documents):
             continue
         query = query.replace('[','').replace(']','').replace("'",'').replace(",",'').replace('"','')
         query = query.strip()
-        docs = ensemble_retriever.invoke(f"关于{query}，你可以告诉我什么？")
+        docs = ensemble_retriever.invoke(f"关于提问{query}，请提供所有与提问相关的详细信息和回答。")
         reordering = LongContextReorder()
         reordered_docs = reordering.transform_documents(docs)
         result = chain.invoke({"context": reordered_docs, "query": query}) 
@@ -352,7 +353,7 @@ def chat_with_llm(model, extended_queries):
     results = ""
     template = """
                 你是一个优秀的外贸研究助理，你现在需要回答我所给的问题，回答需要详细且专业；
-                必须在100-300字，语气保持客观，符合人类偏好逻辑和语气，以中文回答，不要给回答标号。
+                必须在0-300字，语气保持客观，符合人类偏好逻辑和语气，以中文回答，不要给回答标号。
                 {query}"""
     prompt = PromptTemplate.from_template(template)
     chain = prompt | llm | StrOutputParser()
@@ -410,22 +411,21 @@ def post_processing(questions, rag_result, llm_result):
 
     # data = []
     json_result = ""
-    print(len(questions))
     for i in range(len(questions)):
         entry = {
             "question": [
                 {
                     "from": "human",
-                    "value": questions[i].strip().replace('[','').replace(']','').replace("'",'').replace(",",'').replace('"','')
+                    "value": questions[i].strip().replace('[','').replace(']','').replace("'",'').replace(",",'').replace('"','').replace(" ",'')
                 }
             ],
             "chosen": {
                 "from": "gpt",
-                "value": rag_answers[i].strip().replace('<eos>','').replace('[','').replace(']','').replace("'",'').replace(",",'').replace('"','')
+                "value": rag_answers[i].strip().replace('<eos>','').replace('[','').replace(']','').replace("'",'').replace(",",'').replace('"','').replace(" ",'')
             },
             "rejected": {
                 "from": "gpt",
-                "value": llm_answers[i].strip().replace('<eos>','').replace('[','').replace(']','').replace("'",'').replace(",",'').replace('"','')
+                "value": llm_answers[i].strip().replace('<eos>','').replace('[','').replace(']','').replace("'",'').replace(",",'').replace('"','').replace(" ",'')
             }
         }
         json_result += json.dumps(entry, ensure_ascii=False)+ '\n'

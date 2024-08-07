@@ -25,15 +25,15 @@ with gr.Blocks(title="数据合成") as demo:
     gr.Markdown("""# Synthetic Data Factory""")
     with gr.Row():
         directory = gr.Textbox(label="Directory", value=directory, interactive=False, scale=4)
-        available_models = gr.Dropdown(choices=available_model_list,  label="Ollama Model", scale=2)
-        data = gr.Dropdown(choices=files_choices, label="File",  scale=4)
+        available_models = gr.Dropdown(choices=available_model_list, label="Ollama Model", scale=2)
+        data = gr.Dropdown(choices=files_choices, label="File", scale=4)
         # collection_name = gr.Textbox(label="Collection Name", interactive=True, scale=4)
         file_path = gr.Textbox(label="File Path", interactive=False, scale=7, show_copy_button=True)
     with gr.Row():
         with gr.Column(scale=6):
-            generated_queries = gr.Textbox(label="扩展提示词",lines=6, interactive=False)
+            generated_queries = gr.Textbox(label="扩展提示词",lines=6, interactive=False, show_copy_button=True)
         with gr.Column(scale=2):
-            numbers = gr.Slider(minimum=1, maximum=50, value=3, step=1, label="提示词数量")
+            numbers = gr.Slider(minimum=1, maximum=50, value=5, step=1, label="提示词数量")
             button_generate_q = gr.Button("生成扩展提示词")
             button_answer = gr.Button("生成回答", scale=1, variant='primary')
     # with gr.Row():

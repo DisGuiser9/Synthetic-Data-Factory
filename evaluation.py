@@ -25,7 +25,7 @@ class AnswerEvaluator:
     def __init__(self):
         self.path = '/share149/huggingface/models--meta-llama--Meta-Llama-3.1-8B-Instruct/snapshots/4281e96c7cf5ab6b312ef0cb78373efa3976a9dd'
         self.model = AutoModelForCausalLM.from_pretrained(self.path)
-        self.device = torch.device("cuda:1" if torch.cuda.is_available() else "cpu")
+        self.device = torch.device("cuda:9" if torch.cuda.is_available() else "cpu")
         self.tokenizer = AutoTokenizer.from_pretrained(self.path)
 
         self.gpt_preference1 = []
@@ -94,7 +94,7 @@ class AnswerEvaluator:
                     1.前后逻辑是否一致,是否围绕问题展开回答；
                     2.对于问题的回答是否有理有据、摆事实讲道理。
                     如果回答符合以上标准，应加分；如果回答存在胡言乱语的幻觉现象、前后逻辑看似正确但泛泛而谈、没有实际依据、说了很多但没有回答问题，应扣分。
-                    请注意：其中一个回答是经过检索增强生成的，一个回答是没有经过检索增强，直接生成的，所以可能会在回答中有一些专有名词等情况，这并不是幻觉；
+                    请注意：其中一个回答是经过检索增强生成的，一个回答是没有经过检索增强，直接生成的，所以可能会在某个回答中有一些专有名词等情况，这并不是幻觉，应该加分而并非扣分；
                     请根据这些标准进行打分。如果你认为第一个回答更符合人类偏好且更好地回答了问题，输出[1,0]，反之输出[0,1]。不要输出你的判断和任何的分析或其他内容，只需要返回一个数组。
                     """
         query = f"{prompt} {rag_answer} {llm_answer}"
@@ -251,8 +251,9 @@ def decorate(df):
     return styled_df
 
 def setup_logging():
+    log_file_path = os.path.join('/home/mth/RAG-Align', 'evaluation_log.txt')
     logging.basicConfig(
-        filename='evaluation_log.txt',
+        filename=log_file_path,
         level=logging.INFO,
         format='%(asctime)s - %(levelname)s - %(message)s',
         datefmt='%Y-%m-%d %H:%M:%S'
@@ -280,8 +281,7 @@ def evaluation(questions, rag_answer, llm_answer):
 
     evaluator.evaluate(questions, rag_answers, llm_answers)
     results = evaluator.calculate()
-
-    logging.info("Evaluation results:\n%s", results)
+    results.to_csv('/home/mth/RAG-Align/evaluation_results.csv',mode='a', index=False)
     return results
 
 # # 示例文本
