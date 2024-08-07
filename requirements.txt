@@ -9,3 +9,4 @@ openai
 gradio
 jieba
 transformers
+ollama

@@ -3,8 +3,8 @@
 ### Ollama
 Model: Qwen2-72B-Instruct-fp16
 ### Langchain
-FlashrankRerank
-ContextualCompressionRetriever
-FlashrankRerank
-LongContextReorder
+- FlashrankRerank
+- ContextualCompressionRetriever
+- FlashrankRerank
+- LongContextReorder
 ### Trulenth
