@@ -9,6 +9,7 @@ import requests
 import json
 import ast
 import logging
+from datetime import datetime
 
 from collections import Counter
 from openai import OpenAI
@@ -260,7 +261,10 @@ def setup_logging():
     )
 
 def evaluation(questions, rag_answer, llm_answer):
-    setup_logging()
+    # setup_logging()
+    now = datetime.now()
+    current_date = now.date()
+    formatted_date = current_date.strftime("%Y-%m-%d")
 
     if llm_answer is None:
         results = pd.DataFrame(
@@ -281,7 +285,7 @@ def evaluation(questions, rag_answer, llm_answer):
 
     evaluator.evaluate(questions, rag_answers, llm_answers)
     results = evaluator.calculate()
-    results.to_csv('/home/mth/RAG-Align/evaluation_results.csv',mode='a', index=False)
+    results.to_csv(f'/home/mth/RAG-Align/statistics_data/evaluation_results_{formatted_date}.csv',mode='a', index=False)
     return results
 
 # # 示例文本

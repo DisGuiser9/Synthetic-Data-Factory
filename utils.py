@@ -8,6 +8,7 @@ import re
 import umap
 import numpy as np
 import requests
+from datetime import datetime
 from tqdm import tqdm
 from IPython.display import display, HTML
 
@@ -261,8 +262,9 @@ def prompt_generation(model, documents, numbers):
                 2.根据排序文本概括这段文本内容，并根据此生成{number}个相关问题。这些问题的答案必须存在于文本中，并且与原始文本紧密相关。
                 3.确保每个问题都是完整的句子，且两个问题不相关；只输出问题本身，不需要提供答案、分析或总结。
                 4.生成的问题应该简短明了，避免使用复合句，禁止输出无意义或意义不明的问题。
-                特别注意：不要对问题进行编号，输出中文问题即可。
-                例如，一个合格的问题可能是：“命名商品的方法有哪些？” ,请仅返回问题列表
+                注意：禁止输出无关问题的内容!输出中文问题即可，问题长度必须在10-30字。
+                特别注意：禁止对问题进行编号!！
+                例如，一个合格的问题可能是：“命名商品的方法主要有哪些？” ，请仅返回问题列表。
                 """
     PROMPT = PromptTemplate.from_template(template=template)
     searching_blob = Blob.from_path(documents)
@@ -285,7 +287,7 @@ def prompt_generation(model, documents, numbers):
     reordering = LongContextReorder()
     chain = create_stuff_documents_chain(llm, PROMPT) | StrOutputParser()
     reordered_docs = reordering.transform_documents(docs)
-    result = chain.invoke({"context": reordered_docs, "number": numbers, "query": "请按要求生成提问"}) 
+    result = chain.invoke({"context": reordered_docs, "number": numbers, "query": "请按要求生成提问，不要给问题标序号！"}) 
     for line in result.split('\n'):
         question = line.strip() + '<eos>'
         if len(question) >= 10:
@@ -294,8 +296,8 @@ def prompt_generation(model, documents, numbers):
     return generated_prompts
 
 
-def retrieve_result(model, extended_queries, documents):
-    llm = Ollama(model=model)
+def retrieve_result(model, extended_queries, documents, _top_k, _top_p):
+    llm = Ollama(model=model, top_k=_top_k, top_p=_top_p)
     embedding_function = get_embeddings_function("zh")
     template = """
                 首先，请严格按照提供的检索内容和要求输出文本，这些内容已按照与查询的相关性进行了降序排列。请按以下步骤和要求完成任务：
@@ -309,7 +311,9 @@ def retrieve_result(model, extended_queries, documents):
                """
     RETRIEVAL_PROMPT = PromptTemplate.from_template(template=template)
     extended_queries = [query.strip() for query in extended_queries.split('<eos>')]
-    
+    full_file_name = os.path.split(documents)[1]
+    file_name, _ = os.path.splitext(full_file_name)
+
     # 加载整个文档
     searching_blob = Blob.from_path(documents)
     parser = MyParser()
@@ -335,11 +339,11 @@ def retrieve_result(model, extended_queries, documents):
 
     results, context = "", []
     for query in extended_queries:
-        if len(query) < 10:
+        if len(query) <= 5:
             continue
         query = query.replace('[','').replace(']','').replace("'",'').replace(",",'').replace('"','')
         query = query.strip()
-        docs = ensemble_retriever.invoke(f"关于提问{query}，请提供所有与提问相关的详细信息和回答。")
+        docs = ensemble_retriever.invoke(f"关于{file_name}，请提供所有与提问{query}相关的详细信息和回答。")
         reordering = LongContextReorder()
         reordered_docs = reordering.transform_documents(docs)
         result = chain.invoke({"context": reordered_docs, "query": query}) 
@@ -348,8 +352,8 @@ def retrieve_result(model, extended_queries, documents):
     return results, context
 
 
-def chat_with_llm(model, extended_queries):
-    llm = Ollama(model=model)
+def chat_with_llm(model, extended_queries, _top_k, _top_p):
+    llm = Ollama(model=model, top_k=_top_k, top_p=_top_p)
     results = ""
     template = """
                 你是一个优秀的外贸研究助理，你现在需要回答我所给的问题，回答需要详细且专业；
@@ -360,7 +364,7 @@ def chat_with_llm(model, extended_queries):
     extended_queries = [query.strip() for query in extended_queries.split('<eos>')]
 
     for query in extended_queries:
-        if len(query) < 10:
+        if len(query) <= 5:
             continue
         query = query.replace('[','').replace(']','').replace("'",'').replace(",",'').replace('"','')
         query = query.strip()
@@ -400,7 +404,7 @@ def embeddings_plot(original_query, projected_dataset_embeddings, projected_retr
     plt.axis('off')
     return plot
 
-def post_processing(questions, rag_result, llm_result):
+def post_processing_for_dpo(questions, rag_result, llm_result):
     questions = [question.strip().replace('\n', '') for question in questions.split('<eos>') if len(question) > 5]
     rag_answers = [answer.strip().replace('\n', '') for answer in rag_result.split('<eos>') if len(answer) > 5]
     llm_answers = [answer.strip().replace('\n', '') for answer in llm_result.split('<eos>') if len(answer) > 5]
@@ -434,8 +438,10 @@ def post_processing(questions, rag_result, llm_result):
     return json_result
 
 def dump_into_json(json_result):
-    
-    with open('/home/mth/RAG-Align/output_data/data.jsonl', 'a', encoding='utf-8') as file:
+    now = datetime.now()
+    current_date = now.date()
+    formatted_date = current_date.strftime("%Y-%m-%d")
+    with open(f'/home/mth/RAG-Align/output_data/dpo-data_{formatted_date}.jsonl', 'a', encoding='utf-8') as file:
         for line in [json_result]:
             file.write(line) 
 
