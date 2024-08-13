@@ -4,9 +4,13 @@ tqdm
 matplotlib
 chromadb
 torch
+datasets
 langchain==0.2.9
 openai
 gradio
 jieba
 transformers
 ollama
+scikit-learn 
+umap-learn 
+sentence_transformers

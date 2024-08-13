@@ -276,13 +276,13 @@ def prompt_generation(model, documents, numbers):
     output = text_splitter.split_documents(output)
     
     vector_db = Chroma.from_documents(output, embedding=embedding_function)   #创建向量数据库
-    retriever = vector_db.as_retriever(search_type="mmr", search_kwargs={"k": max(numbers,10), "lambda_mult": 0.25})
+    retriever = vector_db.as_retriever(search_type="mmr", search_kwargs={"k": max(numbers,10), "lambda_mult": 0.3})
 
     compressor = FlashrankRerank()
     compression_retriever = ContextualCompressionRetriever(
         base_compressor=compressor, base_retriever=retriever
     )
-    docs = compression_retriever.invoke(f"关于{file_name}，你可以告诉我什么？")
+    docs = compression_retriever.invoke(f"关于{file_name}，你可以告诉我什么？请返回更多样全面的信息。")
     
     reordering = LongContextReorder()
     chain = create_stuff_documents_chain(llm, PROMPT) | StrOutputParser()
@@ -302,9 +302,10 @@ def retrieve_result(model, extended_queries, documents, _top_k, _top_p):
     template = """
                 首先，请严格按照提供的检索内容和要求输出文本，这些内容已按照与查询的相关性进行了降序排列。请按以下步骤和要求完成任务：
                 1. 分析：请分析哪些检索内容与我提出的问题最为相关。
-                2. 回答：严格按照{context}，结合你的分析结果，详细且专业地回答{query}。
+                2. 回答：严格按照{context}，先结合你的分析结果组织语言，再详细且专业地回答{query}。
                 请在回答时必须遵循以下原则：
                 1. 回答必须在0-300字之间，保持客观，符合人类偏好逻辑和语气，只需要输出与问题有关的回答，不要输出任何额外的内容或无关的举例！
+                2. 回答时禁止输出“根据题目描述”、“根据书本”等类似文本，回答时保持原来的交流状态和逻辑，直接输出回答，而不是按检索后逻辑回答问题！！
                 2. 禁止回答中包含额外的内容或无关的举例，禁止输出一切你的判断和总结！如果你有不知道的请严格参考所给内容，禁止胡言乱语重复输出！
                 3. 禁止输出令人困惑或具歧义的文本，尽可能少地依赖你的先验知识，但必须保持语言能力，保持输出文本的质量，必要时可以罗列排序文本！
                 4. 禁止输出任何对回答的评价，禁止总结回答内容，禁止总结回答是否遵循提示词要求或上下文，禁止用总起句介绍回答是否遵循或提示词上下文！！              

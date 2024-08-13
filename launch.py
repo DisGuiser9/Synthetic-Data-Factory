@@ -34,9 +34,10 @@ with gr.Blocks(title="数据合成") as demo:
             generated_queries = gr.Textbox(label="扩展提示词",lines=7, interactive=False, show_copy_button=True)
         with gr.Column(scale=1):
             question_numbers = gr.Slider(minimum=1, maximum=50, value=5, step=1, label="提示词数量")
-            button_generate_q = gr.Button(value="生成扩展提示词")
+            checkbox_q = gr.CheckboxGroup(["单轮", "多轮"], label="Question中的对话轮次"),
+            button_generate_q = gr.Button(value="生成扩展提示词", scale=1)
         with gr.Column(scale=1):
-            top_k = gr.Slider(minimum=20, maximum=80, value=40, step=1, label="Top-K", info="RAG&LLM模型参数")
+            top_k = gr.Slider(minimum=20, maximum=80, value=40, step=1, label="Top-K")
             top_p = gr.Slider(minimum=0.1, maximum=1.0, value=0.7, step=0.05, label="Top-P")
             button_answer = gr.Button(value="生成回答", scale=1, variant='primary')
     # with gr.Row():
