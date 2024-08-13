@@ -59,7 +59,7 @@ def single_turn_prompt_template():
     return SINGLE_TURN_TEMPLATE
 
 
-def step_back_prompt_template():
+def stepback_prompt_template():
     """
     input_variables in chain: file_name, question
     """
