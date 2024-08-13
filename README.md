@@ -10,10 +10,14 @@ Files:
 ```
 
 Usage:
+**Example**
 ```
 python main.py\
-    --model_name qwen2:72b-instruct-fp16\
-    --top_k 
+    --model_name="qwen2:72b-instruct-fp16"\
+    --top_k=50\
+    --top_p=0.35\
+    --numbers=10\
+    --langcode='zh'
 ```
 
 #### Ollama
