@@ -3,7 +3,7 @@ from langchain_core.prompts import PipelinePromptTemplate, PromptTemplate
 def single_turn_rag_template():
     """
     correspondence to single turn prompt
-    input_variables: query
+    input_variables: query, context
     """
     full_template = """
             {system}
@@ -38,9 +38,9 @@ def single_turn_rag_template():
     notice_prompt = PromptTemplate.from_template(notice_template)
 
     input_prompts = [
-        system_prompt,
-        instruction_prompt,
-        notice_prompt
+        ("system", system_prompt),
+        ("instruction", instruction_prompt),
+        ("notice",notice_prompt)
     ]
     SINGLE_TURN_LLM_PROMPT = PipelinePromptTemplate(final_prompt=full_prompt, pipeline_prompts=input_prompts)
     return SINGLE_TURN_LLM_PROMPT
@@ -49,7 +49,7 @@ def single_turn_rag_template():
 def stepback_rag_template():
     """
     correspondence to stepback prompt
-    input_variables: conversation, context
+    input_variables: file_name, query, context
     """
     full_template = """
             {system}
@@ -66,7 +66,7 @@ def stepback_rag_template():
     system_prompt = PromptTemplate.from_template(system_template)
 
     instruction_template = """
-            以下是一份对话{conversation}，由“提问、回答、提问”组合而成；
+            以下是一份对话{query}，由“提问、回答、提问”组合而成，主题是{file_name}；
             请按以下步骤和要求完成任务：
             1. 分析：第一个问题与第二个问题是高度相关的，第一个问题的回答也能作为回答第二个问题的参考；
                     检索内容中可能最只是存在少部分有关语句，分析得到与对话最有关的文本片段
@@ -95,7 +95,7 @@ def stepback_rag_template():
 def augmented_prompt_rag_template():
     """
     correspondence to augment prompt
-    input_variables: conversation, context
+    input_variables: file_name, context, query
     """
     full_template = """
             {system}
@@ -112,7 +112,7 @@ def augmented_prompt_rag_template():
     system_prompt = PromptTemplate.from_template(system_template)
 
     instruction_template = """
-            以下是一份对话{conversation}，由“提问、回答、提问”组合而成；
+            以下是一份对话{query}，由“提问、回答、提问”组合而成，主题是{file_name}；
             请按以下步骤和要求完成任务：
             1. 分析：第一个问题与第二个问题是高度相关的，第一个问题的回答也能作为回答第二个问题的参考；
                     检索内容中可能最只是存在少部分有关语句，分析得到与对话最有关的文本片段
@@ -139,10 +139,10 @@ def augmented_prompt_rag_template():
     return AUGMENT_RAG_PROMPT
 
 
-def format_prompt_llm_answer():
+def literary_prompt_rag_template():
     """
     correspondence to augment prompt
-    input_variables: docs, file_name, format， context
+    input_variables: file_name, query, literary, context
     """
     full_template = """
             {system}
@@ -159,10 +159,10 @@ def format_prompt_llm_answer():
     system_prompt = PromptTemplate.from_template(system_template)
 
     instruction_template = """
-            以下是一段与外贸相关的文本段落{docs}，其中包含了所需要生成的文体和主题是{file_name}的外贸相关文本；
+            以下是一段与外贸相关的文本段落{query}，其中包含了所需要生成的文体和主题是{file_name}的外贸相关文本；
             请按以下步骤和要求完成任务：
-            1. 检索：请先在相关文本中检索生成文体所需的文本片段；
-            2. 生成：根据检索的片段，生成与文本段落相关，且符合对应文体的文本；
+            1. 检索：请先参考{context}，在相关文本段落中，检索生成文体所需的文本片段；
+            2. 生成：根据检索的片段，生成与文本段落相关，且符合{literary}文体的文本；
             """
     instruction_prompt = PromptTemplate.from_template(instruction_template)
 
@@ -180,5 +180,5 @@ def format_prompt_llm_answer():
         ("instruction", instruction_prompt),
         ("notice", notice_prompt)
     ]
-    FORMAT_LLM_PROMPT = PipelinePromptTemplate(final_prompt=full_prompt, pipeline_prompts=input_prompts)
-    return FORMAT_LLM_PROMPT
+    LITERARY_RAG_PROMPT = PipelinePromptTemplate(final_prompt=full_prompt, pipeline_prompts=input_prompts)
+    return LITERARY_RAG_PROMPT

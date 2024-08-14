@@ -2,7 +2,7 @@ import os
 import json
 import chromadb
 from pathlib import Path
-from typing import List, Dict, Iterator
+from typing import List, Dict, Iterator, Optional
 import matplotlib.pyplot as plt
 import re
 import umap
@@ -11,6 +11,7 @@ import requests
 from datetime import datetime
 from tqdm import tqdm
 from IPython.display import display, HTML
+from template import llm_template, rag_template, question_template
 
 from langchain_community.llms.ollama import Ollama
 from langchain_community.embeddings.ollama import OllamaEmbeddings
@@ -18,7 +19,7 @@ from langchain_community.embeddings.fastembed import FastEmbedEmbeddings
 from langchain_community.document_compressors.flashrank_rerank import FlashrankRerank
 from langchain_community.vectorstores import Chroma
 from langchain_community.document_transformers import LongContextReorder
-from langchain_community.retrievers import BM25Retriever, ElasticSearchBM25Retriever
+from langchain_community.retrievers import BM25Retriever
 from langchain_community.document_loaders import TextLoader, PyPDFLoader
 
 from langchain_core.documents import Document
@@ -68,7 +69,7 @@ def load_file_to_text(file_path) -> List:
         # 去除空行
         documents_text = [text for text in documents_text if text]
     else:
-        raise ValueError("Unsupported file format: {file_path.suffix}")
+        raise ValueError("Unsupported file literary: {file_path.suffix}")
     
     return documents_text
 
@@ -215,6 +216,31 @@ def _chunk_texts(texts, langcode="zh"):
     return token_split_texts
 
 
+def prompt_choices(mode):
+    mode_list = ["single", "stepback", "augment", "literary"]
+
+    if mode == "single":
+        Question_Template = question_template.single_turn_prompt_template()
+        RAG_Template = rag_template.single_turn_rag_template()
+        LLM_Template = llm_template.single_turn_llm_template()
+    elif mode == "stepback":
+        Question_Template = question_template.stepback_prompt_template()
+        RAG_Template = rag_template.stepback_rag_template()
+        LLM_Template = llm_template.stepback_llm_template()
+    elif mode == "augment":
+        Question_Template = question_template.augment_dialogue_prompt_template()
+        RAG_Template = rag_template.augmented_prompt_rag_template()
+        LLM_Template = llm_template.augmented_prompt_llm_template()
+    elif mode == "literary":
+        Question_Template = question_template.literary_prompt_template()
+        RAG_Template = rag_template.literary_prompt_rag_template()
+        LLM_Template = llm_template.literary_prompt_llm_template()
+    else:
+        raise ValueError(f"Invalid mode: {mode}, Valid Key is {mode_list}")    
+
+    return Question_Template, RAG_Template, LLM_Template
+    
+
 def augment_multiple_query(model, query, numbers):
 # 扩展query，扩大数据集涉及区域
     extended_queries = []
@@ -238,7 +264,8 @@ def augment_multiple_query(model, query, numbers):
     return extended_queries
 
 
-def prompt_generation(model, documents, numbers):
+def prompt_generation(model, documents, numbers, mode:str, prev_question:Optional[str] = None,
+                      dialogue:Optional[str] = None, literary: Optional[str] = "博客"):
     with open(documents, "r", encoding='utf-8') as f:
         data = []
         for line in f:
@@ -256,17 +283,18 @@ def prompt_generation(model, documents, numbers):
     llm = Ollama(model=model)
     embedding_function = get_embeddings_function("zh")
     generated_prompts = []
-    template = """
-                请扮演一位优秀的外贸研究助理。我将提供与外贸领域相关的文本，请你按照以下步骤操作：
-                1.你必须参考我给你的检索内容{context}，这些内容已按照与文本主旨相关性进行了降序排列，越靠前的主题越相关。
-                2.根据排序文本概括这段文本内容，并根据此生成{number}个相关问题。这些问题的答案必须存在于文本中，并且与原始文本紧密相关。
-                3.确保每个问题都是完整的句子，且两个问题不相关；只输出问题本身，不需要提供答案、分析或总结。
-                4.生成的问题应该简短明了，避免使用复合句，禁止输出无意义或意义不明的问题。
-                注意：禁止输出无关问题的内容!输出中文问题即可，问题长度必须在10-30字。
-                特别注意：禁止对问题进行编号!！
-                例如，一个合格的问题可能是：“命名商品的方法主要有哪些？” ，请仅返回问题列表。
-                """
-    PROMPT = PromptTemplate.from_template(template=template)
+    # template = """
+    #             请扮演一位优秀的外贸研究助理。我将提供与外贸领域相关的文本，请你按照以下步骤操作：
+    #             1.你必须参考我给你的检索内容{context}，这些内容已按照与文本主旨相关性进行了降序排列，越靠前的主题越相关。
+    #             2.根据排序文本概括这段文本内容，并根据此生成{number}个相关问题。这些问题的答案必须存在于文本中，并且与原始文本紧密相关。
+    #             3.确保每个问题都是完整的句子，且两个问题不相关；只输出问题本身，不需要提供答案、分析或总结。
+    #             4.生成的问题应该简短明了，避免使用复合句，禁止输出无意义或意义不明的问题。
+    #             注意：禁止输出无关问题的内容!输出中文问题即可，问题长度必须在10-30字。
+    #             特别注意：禁止对问题进行编号!！
+    #             例如，一个合格的问题可能是：“命名商品的方法主要有哪些？” ，请仅返回问题列表。
+    #             """
+
+    # PROMPT = PromptTemplate.from_template(template=template)
     searching_blob = Blob.from_path(documents)
     parser = MyParser()
     output = parser.lazy_parse(searching_blob)
@@ -275,7 +303,7 @@ def prompt_generation(model, documents, numbers):
                                                     length_function=len,is_separator_regex=False)
     output = text_splitter.split_documents(output)
     
-    vector_db = Chroma.from_documents(output, embedding=embedding_function)   #创建向量数据库
+    vector_db = Chroma.from_documents(output, embedding=embedding_function)
     retriever = vector_db.as_retriever(search_type="mmr", search_kwargs={"k": max(numbers,10), "lambda_mult": 0.3})
 
     compressor = FlashrankRerank()
@@ -283,11 +311,24 @@ def prompt_generation(model, documents, numbers):
         base_compressor=compressor, base_retriever=retriever
     )
     docs = compression_retriever.invoke(f"关于{file_name}，你可以告诉我什么？请返回更多样全面的信息。")
-    
     reordering = LongContextReorder()
-    chain = create_stuff_documents_chain(llm, PROMPT) | StrOutputParser()
+    
+    PROMPT_TEMPLATE, _, _ = prompt_choices(mode)
+
+    chain = create_stuff_documents_chain(llm, PROMPT_TEMPLATE) | StrOutputParser()
     reordered_docs = reordering.transform_documents(docs)
-    result = chain.invoke({"context": reordered_docs, "number": numbers, "query": "请按要求生成提问，不要给问题标序号！"}) 
+
+    input_variables_dict = {
+        "single": {"file_name":file_name, "context":reordered_docs, "number":numbers},
+        "stepback": {"file_name":file_name, "context":reordered_docs, "question":prev_question},
+        "augment": {"file_name":file_name, "context":reordered_docs, "dialogue":dialogue},
+        "literary": {"file_name":file_name, "context":reordered_docs, "literary":literary}
+    }
+    input_variables = input_variables_dict.get(mode)
+    input_variables["query"] = "请按要求生成提问"
+    
+    result = chain.invoke(input_variables)
+
     for line in result.split('\n'):
         question = line.strip() + '<eos>'
         if len(question) >= 10:
@@ -296,21 +337,22 @@ def prompt_generation(model, documents, numbers):
     return generated_prompts
 
 
-def retrieve_result(model, extended_queries, documents, _top_k, _top_p):
+def retrieve_result(model, extended_queries, documents, _top_k, _top_p, mode:str, literary: Optional[str] = "博客",
+                    conversation_aug: Optional[str] = None, conversation_step: Optional[str] = None, dialogue: Optional[str] = None):
     llm = Ollama(model=model, top_k=_top_k, top_p=_top_p)
     embedding_function = get_embeddings_function("zh")
-    template = """
-                首先，请严格按照提供的检索内容和要求输出文本，这些内容已按照与查询的相关性进行了降序排列。请按以下步骤和要求完成任务：
-                1. 分析：请分析哪些检索内容与我提出的问题最为相关。
-                2. 回答：严格按照{context}，先结合你的分析结果组织语言，再详细且专业地回答{query}。
-                请在回答时必须遵循以下原则：
-                1. 回答必须在0-300字之间，保持客观，符合人类偏好逻辑和语气，只需要输出与问题有关的回答，不要输出任何额外的内容或无关的举例！
-                2. 回答时禁止输出“根据题目描述”、“根据书本”等类似文本，回答时保持原来的交流状态和逻辑，直接输出回答，而不是按检索后逻辑回答问题！！
-                2. 禁止回答中包含额外的内容或无关的举例，禁止输出一切你的判断和总结！如果你有不知道的请严格参考所给内容，禁止胡言乱语重复输出！
-                3. 禁止输出令人困惑或具歧义的文本，尽可能少地依赖你的先验知识，但必须保持语言能力，保持输出文本的质量，必要时可以罗列排序文本！
-                4. 禁止输出任何对回答的评价，禁止总结回答内容，禁止总结回答是否遵循提示词要求或上下文，禁止用总起句介绍回答是否遵循或提示词上下文！！              
-               """
-    RETRIEVAL_PROMPT = PromptTemplate.from_template(template=template)
+    # template = """
+    #             首先，请严格按照提供的检索内容和要求输出文本，这些内容已按照与查询的相关性进行了降序排列。请按以下步骤和要求完成任务：
+    #             1. 分析：请分析哪些检索内容与我提出的问题最为相关。
+    #             2. 回答：严格按照{context}，先结合你的分析结果组织语言，再详细且专业地回答{query}。
+    #             请在回答时必须遵循以下原则：
+    #             1. 回答必须在0-300字之间，保持客观，符合人类偏好逻辑和语气，只需要输出与问题有关的回答，不要输出任何额外的内容或无关的举例！
+    #             2. 回答时禁止输出“根据题目描述”、“根据书本”等类似文本，回答时保持原来的交流状态和逻辑，直接输出回答，而不是按检索后逻辑回答问题！！
+    #             2. 禁止回答中包含额外的内容或无关的举例，禁止输出一切你的判断和总结！如果你有不知道的请严格参考所给内容，禁止胡言乱语重复输出！
+    #             3. 禁止输出令人困惑或具歧义的文本，尽可能少地依赖你的先验知识，但必须保持语言能力，保持输出文本的质量，必要时可以罗列排序文本！
+    #             4. 禁止输出任何对回答的评价，禁止总结回答内容，禁止总结回答是否遵循提示词要求或上下文，禁止用总起句介绍回答是否遵循或提示词上下文！！              
+    #            """
+    # RETRIEVAL_PROMPT = PromptTemplate.from_template(template=template)
     extended_queries = [query.strip() for query in extended_queries.split('<eos>')]
     full_file_name = os.path.split(documents)[1]
     file_name, _ = os.path.splitext(full_file_name)
@@ -325,7 +367,7 @@ def retrieve_result(model, extended_queries, documents, _top_k, _top_p):
     output = text_splitter.split_documents(output)
 
     # Sparse and Dense retrieval
-    vector_db = Chroma.from_documents(output, embedding=embedding_function)   #创建向量数据库
+    vector_db = Chroma.from_documents(output, embedding=embedding_function)   
     retriever = vector_db.as_retriever(search_type="mmr", search_kwargs={"k": 5, "lambda_mult": 0.25})
     bm25_retriever = BM25Retriever.from_documents(output)
     bm25_retriever.k = 5
@@ -336,6 +378,7 @@ def retrieve_result(model, extended_queries, documents, _top_k, _top_p):
     )
     ensemble_retriever = EnsembleRetriever(retrievers=[bm25_retriever, compression_retriever], weights=[0.5, 0.5])
     
+    _, RETRIEVAL_PROMPT, _ = prompt_choices(mode)    
     chain = create_stuff_documents_chain(llm, RETRIEVAL_PROMPT) | StrOutputParser()
 
     results, context = "", []
@@ -347,21 +390,43 @@ def retrieve_result(model, extended_queries, documents, _top_k, _top_p):
         docs = ensemble_retriever.invoke(f"关于{file_name}，请提供所有与提问{query}相关的详细信息和回答。")
         reordering = LongContextReorder()
         reordered_docs = reordering.transform_documents(docs)
-        result = chain.invoke({"context": reordered_docs, "query": query}) 
+        
+        # invoke function should have key words "query"
+        input_variables_dict = {
+        "single": {"file_name":file_name, "context":reordered_docs, "query":query},
+        "stepback": {"file_name":file_name, "context":reordered_docs, "query":conversation_step},
+        "augment": {"file_name":file_name, "context":reordered_docs, "query":conversation_aug},
+        "literary": {"file_name":file_name, "context":reordered_docs, "literary":literary, "query":dialogue}
+        }
+        input_variables = input_variables_dict.get(mode)
+        result = chain.invoke(input_variables) 
         results += result + '<eos>' + '\n\n'
         context.append(reordered_docs) 
     return results, context
 
 
-def chat_with_llm(model, extended_queries, _top_k, _top_p):
+def chat_with_llm(model, extended_queries, documents, _top_k, _top_p, mode:str, literary: Optional[str] = "博客",
+                  conversation_aug: Optional[str] = None, conversation_step: Optional[str] = None, dialogue: Optional[str] = None):
     llm = Ollama(model=model, top_k=_top_k, top_p=_top_p)
+    full_file_name = os.path.split(documents)[1]
+    file_name, _ = os.path.splitext(full_file_name)
+
     results = ""
-    template = """
-                你是一个优秀的外贸研究助理，你现在需要回答我所给的问题，回答需要详细且专业；
-                必须在0-300字，语气保持客观，符合人类偏好逻辑和语气，以中文回答，不要给回答标号。
-                {query}"""
-    prompt = PromptTemplate.from_template(template)
-    chain = prompt | llm | StrOutputParser()
+    # template = """
+    #             你是一个优秀的外贸研究助理，你现在需要回答我所给的问题，回答需要详细且专业；
+    #             必须在0-300字，语气保持客观，符合人类偏好逻辑和语气，以中文回答，不要给回答标号。
+    #             {query}"""
+    # prompt = PromptTemplate.from_template(template)
+    
+    mode_dict = {"single":llm_template.single_turn_llm_template,
+                 "stepback":llm_template.stepback_llm_template,
+                 "augment":llm_template.augmented_prompt_llm_template,
+                 "literary":llm_template.literary_prompt_llm_template}
+    if mode not in mode_dict:
+        raise ValueError(f"Invalid mode: {mode}, Valid Key is {list(mode_dict.keys())}")    
+    
+    _, _, LLM_PROMPT = prompt_choices(mode)
+    chain = LLM_PROMPT | llm | StrOutputParser()
     extended_queries = [query.strip() for query in extended_queries.split('<eos>')]
 
     for query in extended_queries:
@@ -369,7 +434,16 @@ def chat_with_llm(model, extended_queries, _top_k, _top_p):
             continue
         query = query.replace('[','').replace(']','').replace("'",'').replace(",",'').replace('"','')
         query = query.strip()
-        result = chain.invoke({"query": query}) 
+
+        # invoke function should have key words "query"
+        input_variables_dict = {
+        "single": {"file_name":file_name, "query":query},
+        "stepback": {"file_name":file_name, "query":conversation_step},
+        "augment": {"file_name":file_name, "query":conversation_aug},
+        "literary": {"file_name":file_name, "literary":literary, "query":dialogue}
+        }
+        input_variables = input_variables_dict.get(mode)
+        result = chain.invoke(input_variables) 
         results += result + '<eos>' + '\n\n'
     return results
 
