@@ -590,7 +590,7 @@ def post_processing_for_dpo(questions, rag_result, llm_result, mode, dialogue):
                     "value": llm_answers[i]
                 }
             }
-            json_result += json.dumps(entry, ensure_ascii=False)+ '\n'
+        json_result += json.dumps(entry, ensure_ascii=False)+ '\n'
 
 
     # data.append(json_result)    
