@@ -61,12 +61,12 @@ def single_turn_prompt_template():
 
 def stepback_prompt_template():
     """
-    input_variables in chain: file_name, context, question, 
+    input_variables in chain: file_name, context, question 
     """
     full_template = """
             {system}
 
-            {step_back_prompt}
+            {instruction}
 
             {notice}            
             """
@@ -75,7 +75,7 @@ def stepback_prompt_template():
     system_template = "请扮演一位优秀的外贸研究助理解决关于生成与{file_name}内容相关的一个问题。"
     system_prompt = PromptTemplate.from_template(system_template)
 
-    step_back_template = """
+    instruction_template = """
                             你的任务是后退一步，同时参考文档{context}，将问题转述为一个与文档内容相关的，且更通用的后退式问题；
                             以下是几个例子：
                             原始问题：如果温度增加 2 倍，体积增加 8 倍，理想气体的压强 P 会发生什么变化？
@@ -85,7 +85,7 @@ def stepback_prompt_template():
                             原始问题：{question}
                             后退式问题：
                         """
-    step_back_prompt = PromptTemplate.from_template(step_back_template)
+    instruction_prompt = PromptTemplate.from_template(instruction_template)
 
     notice_template = """
                 必须只输出这个后退式问题!输出中文！禁止与原问题重复！
@@ -98,7 +98,7 @@ def stepback_prompt_template():
 
     input_prompts = [
         ("system", system_prompt),
-        ("instruction", step_back_prompt),
+        ("instruction", instruction_prompt),
         ("notice", notice_prompt)
     ]
 

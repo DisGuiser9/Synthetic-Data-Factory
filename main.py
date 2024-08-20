@@ -96,8 +96,8 @@ def main():
         post_processing(seed_prompts, rag_content, llm_content, data_type)
 
     elif mode == 'stepback':
-        seed_prompts = seed_prompt_generation(model, file_path, numbers, mode='single')
-        stepback_prompts = seed_prompt_generation(model, file_path, numbers, seed_prompts, mode)
+        seed_prompts = seed_prompt_generation(model, file_path, numbers, mode='single')    #prev_questions
+        stepback_prompts = seed_prompt_generation(model, file_path, numbers, mode, seed_prompts)
         intermidiate_answers = retrieve_answer(model, stepback_prompts, file_path, top_k, top_p, running, mode)
         dialogue = conversation_concat(seed_prompts, intermidiate_answers, numbers, running, mode, stepback_prompts)
         rag_content = retrieve_answer(model, dialogue, file_path, top_k, top_p, running, mode)
@@ -109,11 +109,9 @@ def main():
         intermidiate_answers = retrieve_answer(model, seed_prompts, file_path, top_k, top_p, running, mode)
         second_prompts = multi_prompts_generation(model, file_path, numbers, seed_prompts, intermidiate_answers, running, mode, None, literary)
         dialogue = conversation_concat(seed_prompts, intermidiate_answers, numbers, running, mode, second_prompts)
-        print(dialogue)
         rag_content = retrieve_answer(model, dialogue, file_path, top_k, top_p, running, mode)        
         llm_content = llm_answer(model, dialogue, file_path, top_k, top_p, running, mode)
-        print(rag_content)
-        post_processing(second_prompts, rag_content, llm_content, data_type)
+        post_processing(dialogue, rag_content, llm_content, data_type)
 
 if __name__ == '__main__':
     main()

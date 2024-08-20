@@ -18,16 +18,15 @@ from rouge_score import rouge_scorer
 
 
 # path = '/share149/huggingface/models--meta-llama--Meta-Llama-3-70B/snapshots/b4d08b7db49d488da3ac49adf25a6b9ac01ae338'
-# model = AutoModelForCausalLM.from_pretrained(path)
 tool = language_tool_python.LanguageTool('zh-CN')
-
+path = '/share149/huggingface/models--meta-llama--Meta-Llama-3.1-8B-Instruct/snapshots/4281e96c7cf5ab6b312ef0cb78373efa3976a9dd'
+model = AutoModelForCausalLM.from_pretrained(path)
+tokenizer = AutoTokenizer.from_pretrained(path)
 
 class AnswerEvaluator:
     def __init__(self):
-        self.path = '/share149/huggingface/models--meta-llama--Meta-Llama-3.1-8B-Instruct/snapshots/4281e96c7cf5ab6b312ef0cb78373efa3976a9dd'
-        self.model = AutoModelForCausalLM.from_pretrained(self.path)
+
         self.device = torch.device("cuda:3" if torch.cuda.is_available() else "cpu")
-        self.tokenizer = AutoTokenizer.from_pretrained(self.path)
 
         self.gpt_preference1 = []
         self.gpt_preference2 = []
@@ -130,16 +129,17 @@ class AnswerEvaluator:
         tokens = jieba.lcut(text)
         return Counter(tokens)
 
+    #困惑度
     def calculate_perplexity(self, text):
         # 对文本进行编码
-        encodings = self.tokenizer(text, return_tensors='pt').to(self.device)
+        encodings = tokenizer(text, return_tensors='pt').to(self.device)
         input_ids = encodings.input_ids
         
         # 禁用梯度计算
         with torch.no_grad():
             # 计算模型输出
-            self.model.to(self.device)
-            outputs = self.model(input_ids, labels=input_ids)
+            model.to(self.device)
+            outputs = model(input_ids, labels=input_ids)
             
             # 获取交叉熵损失
             loss = outputs.loss
@@ -160,31 +160,31 @@ class AnswerEvaluator:
             # if len(question) <= 5 or len(rag_answer[i]) <= 5 or len(llm_answer[i]) <= 5:
             #     continue
 
-            self.grammar_scores1.append(self.grammar_errors(rag_answer[i]))
-            self.grammar_scores2.append(self.grammar_errors(llm_answer[i]))
+            # self.grammar_scores1.append(self.grammar_errors(rag_answer[i]))
+            # self.grammar_scores2.append(self.grammar_errors(llm_answer[i]))
 
-            self.ttr_scores1.append(self.type_token_ratio(rag_answer[i]))
-            self.ttr_scores2.append(self.type_token_ratio(llm_answer[i]))
+            # self.ttr_scores1.append(self.type_token_ratio(rag_answer[i]))
+            # self.ttr_scores2.append(self.type_token_ratio(llm_answer[i]))
 
-            self.keyword_matches1.append(self.keyword_matching(question[i], rag_answer[i]))
-            self.keyword_matches2.append(self.keyword_matching(question[i], llm_answer[i]))
+            # self.keyword_matches1.append(self.keyword_matching(question[i], rag_answer[i]))
+            # self.keyword_matches2.append(self.keyword_matching(question[i], llm_answer[i]))
 
-            self.lengths_distributions1.append(self.sentence_length_distribution(rag_answer[i]))
-            self.lengths_distributions2.append(self.sentence_length_distribution(llm_answer[i]))
+            # self.lengths_distributions1.append(self.sentence_length_distribution(rag_answer[i]))
+            # self.lengths_distributions2.append(self.sentence_length_distribution(llm_answer[i]))
 
-            freq_q = self.word_frequency(question[i])
-            freq_a1 = self.word_frequency(rag_answer[i])
-            freq_a2 = self.word_frequency(llm_answer[i])
-            self.freq_similarities1.append(self.freq_similarity(freq_q, freq_a1))
-            self.freq_similarities2.append(self.freq_similarity(freq_q, freq_a2))
+            # freq_q = self.word_frequency(question[i])
+            # freq_a1 = self.word_frequency(rag_answer[i])
+            # freq_a2 = self.word_frequency(llm_answer[i])
+            # self.freq_similarities1.append(self.freq_similarity(freq_q, freq_a1))
+            # self.freq_similarities2.append(self.freq_similarity(freq_q, freq_a2))
+
+            # self.distinct1_scores1.append(self.distinct_n_score(rag_answer[i], 1))
+            # self.distinct1_scores2.append(self.distinct_n_score(llm_answer[i], 1))
+            # self.distinct2_scores1.append(self.distinct_n_score(rag_answer[i], 2))
+            # self.distinct2_scores2.append(self.distinct_n_score(llm_answer[i], 2))
 
             self.perplexities1.append(self.calculate_perplexity(rag_answer[i]))
             self.perplexities2.append(self.calculate_perplexity(llm_answer[i]))
-
-            self.distinct1_scores1.append(self.distinct_n_score(rag_answer[i], 1))
-            self.distinct1_scores2.append(self.distinct_n_score(llm_answer[i], 1))
-            self.distinct2_scores1.append(self.distinct_n_score(rag_answer[i], 2))
-            self.distinct2_scores2.append(self.distinct_n_score(llm_answer[i], 2))
 
             preference_list = ast.literal_eval(self.gpt_preference(rag_answer[i], llm_answer[i]))
             self.gpt_preference1.append(preference_list[0])
@@ -193,10 +193,10 @@ class AnswerEvaluator:
     def calculate(self):
         results = {
                 # "grammar_scores": [self.grammar_scores1, self.grammar_scores2],
-                "ttr_scores 词汇丰富度": [self.ttr_scores1, self.ttr_scores2],
-                "keyword_matches 关键词匹配": [self.keyword_matches1, self.keyword_matches2],
+                # "ttr_scores 词汇丰富度": [self.ttr_scores1, self.ttr_scores2],
+                # "keyword_matches 关键词匹配": [self.keyword_matches1, self.keyword_matches2],
                 # "lengths_distributions": [self.lengths_distributions1, self.lengths_distributions2],
-                "freq_similarities 词频分布余弦相似度": [self.freq_similarities1, self.freq_similarities2],
+                # "freq_similarities 词频分布余弦相似度": [self.freq_similarities1, self.freq_similarities2],
                 "perplexities 困惑度": [self.perplexities1, self.perplexities2],
                 # "distinct1_scores": [self.distinct1_scores1, self.distinct1_scores2],
                 # "distinct2_scores": [self.distinct2_scores1, self.distinct2_scores2]

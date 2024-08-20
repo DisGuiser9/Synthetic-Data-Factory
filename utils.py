@@ -294,7 +294,7 @@ def seed_prompt_generation(model, documents, numbers, mode:Optional[str] = "sing
     output = text_splitter.split_documents(output)
     
     vector_db = Chroma.from_documents(output, embedding=embedding_function)
-    retriever = vector_db.as_retriever(search_type="mmr", search_kwargs={"k": max(numbers,10), "lambda_mult": 0.3})
+    retriever = vector_db.as_retriever(search_type="mmr", search_kwargs={"k": max(numbers,5), "lambda_mult": 0.3})
 
     compressor = FlashrankRerank()
     compression_retriever = ContextualCompressionRetriever(
@@ -310,19 +310,22 @@ def seed_prompt_generation(model, documents, numbers, mode:Optional[str] = "sing
 
     input_variables_dict = {
         "single": {"file_name":file_name, "context":reordered_docs, "number":numbers},
-        "stepback": {"file_name":file_name, "context":reordered_docs, "question":prev_question},
-        "augment": {"file_name":file_name, "context":reordered_docs, "dialogue":dialogue},
-        "literary": {"file_name":file_name, "context":reordered_docs, "literary":literary}
+        "stepback": {"file_name":file_name, "context":reordered_docs}
     }
     input_variables = input_variables_dict.get(mode)
-    input_variables["query"] = "请按要求生成提问"
-    
-    result = chain.invoke(input_variables)
+    input_variables["query"] = "请按要求生成提问"      #invoke function must have key "query"
 
-    for line in result.split('\n'):
-        question = line.strip() + '<eos>'
-        if len(question) >= 10:
-            generated_prompts.append(question)
+    if mode == "stepback":
+        for question in prev_question:
+            input_variables["question"] = question    
+            result = chain.invoke(input_variables)
+            generated_prompts.append(result)
+    else:
+        result = chain.invoke(input_variables)
+        for line in result.split('\n'):
+            question = line.strip() + '<eos>'
+            if len(question) >= 10:
+                generated_prompts.append(question)
     return generated_prompts
 
 def multi_prompts_generation(model, documents, numbers, inter_questions, rag_inter_answers,running='demo',
@@ -540,12 +543,16 @@ def string_processing(string):
 
 
 def post_processing_for_dpo(questions, rag_result, llm_result):
-    if type(questions) is str:
+    if isinstance(questions, str):
         questions = [string_processing(question) for question in questions.split('<eos>') if len(question) > 5]
         rag_answers = [string_processing(rag_result) for answer in rag_result.split('<eos>') if len(answer) > 5]
         llm_answers = [string_processing(answer) for answer in llm_result.split('<eos>') if len(answer) > 5]
-    else:
-        questions = [question.replace("<eos>","") for question in questions]
+    elif isinstance(questions, list):
+        if isinstance(questions[0],list):
+            questions = questions
+        else:
+            questions = [question.replace("<eos>","") for question in questions]
+        
         rag_answers, llm_answers = rag_result, llm_result
 
     if len(questions) != len(rag_answers) or len(questions) != len(llm_answers):
