@@ -264,8 +264,8 @@ def augment_multiple_query(model, query, numbers):
     return extended_queries
 
 
-def prompt_generation(model, documents, numbers, mode:str, prev_question:Optional[str] = None,
-                      dialogue:Optional[str] = None, literary: Optional[str] = "博客"):
+def seed_prompt_generation(model, documents, numbers, mode:Optional[str] = "single", prev_question:Optional[str] = None,
+                           dialogue:Optional[str] = None, literary: Optional[str] = "博客"):
     with open(documents, "r", encoding='utf-8') as f:
         data = []
         for line in f:
@@ -283,18 +283,8 @@ def prompt_generation(model, documents, numbers, mode:str, prev_question:Optiona
     llm = Ollama(model=model)
     embedding_function = get_embeddings_function("zh")
     generated_prompts = []
-    # template = """
-    #             请扮演一位优秀的外贸研究助理。我将提供与外贸领域相关的文本，请你按照以下步骤操作：
-    #             1.你必须参考我给你的检索内容{context}，这些内容已按照与文本主旨相关性进行了降序排列，越靠前的主题越相关。
-    #             2.根据排序文本概括这段文本内容，并根据此生成{number}个相关问题。这些问题的答案必须存在于文本中，并且与原始文本紧密相关。
-    #             3.确保每个问题都是完整的句子，且两个问题不相关；只输出问题本身，不需要提供答案、分析或总结。
-    #             4.生成的问题应该简短明了，避免使用复合句，禁止输出无意义或意义不明的问题。
-    #             注意：禁止输出无关问题的内容!输出中文问题即可，问题长度必须在10-30字。
-    #             特别注意：禁止对问题进行编号!！
-    #             例如，一个合格的问题可能是：“命名商品的方法主要有哪些？” ，请仅返回问题列表。
-    #             """
+    print("********开始单次提问*********")
 
-    # PROMPT = PromptTemplate.from_template(template=template)
     searching_blob = Blob.from_path(documents)
     parser = MyParser()
     output = parser.lazy_parse(searching_blob)
@@ -313,7 +303,7 @@ def prompt_generation(model, documents, numbers, mode:str, prev_question:Optiona
     docs = compression_retriever.invoke(f"关于{file_name}，你可以告诉我什么？请返回更多样全面的信息。")
     reordering = LongContextReorder()
     
-    PROMPT_TEMPLATE, _, _ = prompt_choices(mode)
+    PROMPT_TEMPLATE, _, _ = prompt_choices(mode=mode)
 
     chain = create_stuff_documents_chain(llm, PROMPT_TEMPLATE) | StrOutputParser()
     reordered_docs = reordering.transform_documents(docs)
@@ -333,31 +323,86 @@ def prompt_generation(model, documents, numbers, mode:str, prev_question:Optiona
         question = line.strip() + '<eos>'
         if len(question) >= 10:
             generated_prompts.append(question)
-    print(generated_prompts[0])
     return generated_prompts
 
-
-def retrieve_result(model, extended_queries, documents, _top_k, _top_p, mode:str, literary: Optional[str] = "博客",
-                    conversation_aug: Optional[str] = None, conversation_step: Optional[str] = None, dialogue: Optional[str] = None):
-    llm = Ollama(model=model, top_k=_top_k, top_p=_top_p)
-    embedding_function = get_embeddings_function("zh")
-    # template = """
-    #             首先，请严格按照提供的检索内容和要求输出文本，这些内容已按照与查询的相关性进行了降序排列。请按以下步骤和要求完成任务：
-    #             1. 分析：请分析哪些检索内容与我提出的问题最为相关。
-    #             2. 回答：严格按照{context}，先结合你的分析结果组织语言，再详细且专业地回答{query}。
-    #             请在回答时必须遵循以下原则：
-    #             1. 回答必须在0-300字之间，保持客观，符合人类偏好逻辑和语气，只需要输出与问题有关的回答，不要输出任何额外的内容或无关的举例！
-    #             2. 回答时禁止输出“根据题目描述”、“根据书本”等类似文本，回答时保持原来的交流状态和逻辑，直接输出回答，而不是按检索后逻辑回答问题！！
-    #             2. 禁止回答中包含额外的内容或无关的举例，禁止输出一切你的判断和总结！如果你有不知道的请严格参考所给内容，禁止胡言乱语重复输出！
-    #             3. 禁止输出令人困惑或具歧义的文本，尽可能少地依赖你的先验知识，但必须保持语言能力，保持输出文本的质量，必要时可以罗列排序文本！
-    #             4. 禁止输出任何对回答的评价，禁止总结回答内容，禁止总结回答是否遵循提示词要求或上下文，禁止用总起句介绍回答是否遵循或提示词上下文！！              
-    #            """
-    # RETRIEVAL_PROMPT = PromptTemplate.from_template(template=template)
-    extended_queries = [query.strip() for query in extended_queries.split('<eos>')]
+def multi_prompts_generation(model, documents, numbers, inter_questions, rag_inter_answers,running='demo',
+                             mode:Optional[str] = "single", prev_question:Optional[str] = None,literary: Optional[str] = None):
+    with open(documents, "r", encoding='utf-8') as f:
+        data = []
+        for line in f:
+            data.append(json.loads(line))
+    for data in data:
+        text_string = ""
+        text_string += data["text"]
+    file_length = len(text_string)
     full_file_name = os.path.split(documents)[1]
     file_name, _ = os.path.splitext(full_file_name)
 
-    # 加载整个文档
+    _chunk_size = file_length // (numbers*10)
+    _chunk_overlap = _chunk_size // 10
+
+    llm = Ollama(model=model)
+    embedding_function = get_embeddings_function("zh")
+    
+    print("********开始多轮提问*********")
+    searching_blob = Blob.from_path(documents)
+    parser = MyParser()
+    output = parser.lazy_parse(searching_blob)
+
+    text_splitter = RecursiveCharacterTextSplitter(chunk_size=max(_chunk_size,3000),chunk_overlap=max(_chunk_overlap,300), add_start_index=True,
+                                                    length_function=len,is_separator_regex=False)
+    output = text_splitter.split_documents(output)
+    
+    vector_db = Chroma.from_documents(output, embedding=embedding_function)
+    retriever = vector_db.as_retriever(search_type="mmr", search_kwargs={"k": max(numbers,10), "lambda_mult": 0.3})
+
+    compressor = FlashrankRerank()
+    compression_retriever = ContextualCompressionRetriever(
+        base_compressor=compressor, base_retriever=retriever
+    )
+    
+    dialogues = conversation_concat(inter_questions, rag_inter_answers, numbers, running)
+    if type(dialogues) is str:
+        str_results = ''
+        dialogues = [string_processing(dialogue) for dialogue in dialogues.split('<eos>')]
+
+    list_results = []
+    for i in tqdm(range(len(dialogues))):
+        docs = compression_retriever.invoke(f"你认为{dialogues[i]}与本文哪些内容有关？请返回更多样全面的信息。")
+        reordering = LongContextReorder()
+        
+        PROMPT_TEMPLATE, _, _ = prompt_choices(mode=mode)
+
+        chain = create_stuff_documents_chain(llm, PROMPT_TEMPLATE) | StrOutputParser()
+        reordered_docs = reordering.transform_documents(docs)
+
+        input_variables_dict = {
+            "single": {"file_name":file_name, "context":reordered_docs, "number":numbers},
+            "stepback": {"file_name":file_name, "context":reordered_docs, "question":prev_question},
+            "augment": {"file_name":file_name, "context":reordered_docs, "dialogue":dialogues[i]},
+            "literary": {"file_name":file_name, "context":reordered_docs, "dialogue":dialogues[i], "literary":literary}
+        }
+        input_variables = input_variables_dict.get(mode)
+        input_variables["query"] = "请按要求生成提问"
+        result = chain.invoke(input_variables)
+
+        if running == "terminal":
+            list_results.append(result)
+        else:
+            str_results += result + '<eos>' + '\n\n'
+    return_results = list_results if running == "terminal" else str_results
+    
+    return return_results
+
+def retrieve_answer(model, extended_queries, documents, _top_k, _top_p, running='demo',mode: Optional[str] = "single",literary: Optional[str] = "博客",
+                    conversation_aug: Optional[str] = None, conversation_step: Optional[str] = None, dialogue: Optional[str] = None):
+    llm = Ollama(model=model, top_k=_top_k, top_p=_top_p)
+    embedding_function = get_embeddings_function("zh")
+
+    full_file_name = os.path.split(documents)[1]
+    file_name, _ = os.path.splitext(full_file_name)
+
+    print("********开始检索*********")
     searching_blob = Blob.from_path(documents)
     parser = MyParser()
     output = parser.lazy_parse(searching_blob)
@@ -380,13 +425,21 @@ def retrieve_result(model, extended_queries, documents, _top_k, _top_p, mode:str
     
     _, RETRIEVAL_PROMPT, _ = prompt_choices(mode)    
     chain = create_stuff_documents_chain(llm, RETRIEVAL_PROMPT) | StrOutputParser()
+    
+    if isinstance(extended_queries, str):
+        str_results = ""
+        extended_queries = [string_processing(query) for query in extended_queries.split('<eos>') if len(query.strip()) > 5]
+    elif isinstance(extended_queries, list):
+        if isinstance(extended_queries[0], list):
+            extended_queries = extended_queries
+        else:
+            extended_queries = [query.replace('<eos>','') for query in extended_queries if len(query.strip()) > 5]
+        list_results = []
 
-    results, context = "", []
-    for query in extended_queries:
-        if len(query) <= 5:
-            continue
-        query = query.replace('[','').replace(']','').replace("'",'').replace(",",'').replace('"','')
-        query = query.strip()
+    for query in tqdm(extended_queries):
+        while query[0] in ['[', ' ', '"', "'", '"', ","]:
+            query = query[1:]
+
         docs = ensemble_retriever.invoke(f"关于{file_name}，请提供所有与提问{query}相关的详细信息和回答。")
         reordering = LongContextReorder()
         reordered_docs = reordering.transform_documents(docs)
@@ -400,41 +453,36 @@ def retrieve_result(model, extended_queries, documents, _top_k, _top_p, mode:str
         }
         input_variables = input_variables_dict.get(mode)
         result = chain.invoke(input_variables) 
-        results += result + '<eos>' + '\n\n'
-        context.append(reordered_docs) 
-    return results, context
+        if running == "terminal":
+            list_results.append(result)
+        else:
+            str_results += result + '<eos>' + '\n\n'
+    
+    return_results = list_results if running == "terminal" else str_results
+    return return_results
 
-
-def chat_with_llm(model, extended_queries, documents, _top_k, _top_p, mode:str, literary: Optional[str] = "博客",
+def llm_answer(model, extended_queries, documents, _top_k, _top_p, running="demo", mode:Optional[str] = "single", literary: Optional[str] = "博客",
                   conversation_aug: Optional[str] = None, conversation_step: Optional[str] = None, dialogue: Optional[str] = None):
     llm = Ollama(model=model, top_k=_top_k, top_p=_top_p)
     full_file_name = os.path.split(documents)[1]
     file_name, _ = os.path.splitext(full_file_name)
 
-    results = ""
-    # template = """
-    #             你是一个优秀的外贸研究助理，你现在需要回答我所给的问题，回答需要详细且专业；
-    #             必须在0-300字，语气保持客观，符合人类偏好逻辑和语气，以中文回答，不要给回答标号。
-    #             {query}"""
-    # prompt = PromptTemplate.from_template(template)
-    
+    str_results, list_results = "", []
     mode_dict = {"single":llm_template.single_turn_llm_template,
                  "stepback":llm_template.stepback_llm_template,
                  "augment":llm_template.augmented_prompt_llm_template,
                  "literary":llm_template.literary_prompt_llm_template}
+    
+    print("********开始LLM回答*********")
     if mode not in mode_dict:
         raise ValueError(f"Invalid mode: {mode}, Valid Key is {list(mode_dict.keys())}")    
     
     _, _, LLM_PROMPT = prompt_choices(mode)
     chain = LLM_PROMPT | llm | StrOutputParser()
-    extended_queries = [query.strip() for query in extended_queries.split('<eos>')]
+    if type(extended_queries) is str:
+        extended_queries = [string_processing(query) for query in extended_queries.split('<eos>') if len(query.strip()) > 5]
 
-    for query in extended_queries:
-        if len(query) <= 5:
-            continue
-        query = query.replace('[','').replace(']','').replace("'",'').replace(",",'').replace('"','')
-        query = query.strip()
-
+    for query in tqdm(extended_queries):
         # invoke function should have key words "query"
         input_variables_dict = {
         "single": {"file_name":file_name, "query":query},
@@ -443,9 +491,14 @@ def chat_with_llm(model, extended_queries, documents, _top_k, _top_p, mode:str, 
         "literary": {"file_name":file_name, "literary":literary, "query":dialogue}
         }
         input_variables = input_variables_dict.get(mode)
-        result = chain.invoke(input_variables) 
-        results += result + '<eos>' + '\n\n'
-    return results
+        result = chain.invoke(input_variables)
+        if running == "terminal":
+            list_results.append(result)
+        else:
+            str_results += result + '<eos>' + '\n\n'
+    
+    return_results = list_results if running == "terminal" else str_results
+    return return_results
 
 
 def project_umap_embeddings(embeddings, umap_transform):
@@ -479,12 +532,22 @@ def embeddings_plot(original_query, projected_dataset_embeddings, projected_retr
     plt.axis('off')
     return plot
 
-def post_processing_for_dpo(questions, rag_result, llm_result):
-    questions = [question.strip().replace('\n', '') for question in questions.split('<eos>') if len(question) > 5]
-    rag_answers = [answer.strip().replace('\n', '') for answer in rag_result.split('<eos>') if len(answer) > 5]
-    llm_answers = [answer.strip().replace('\n', '') for answer in llm_result.split('<eos>') if len(answer) > 5]
 
-    print(len(questions), len(rag_answers), len(llm_answers))
+def string_processing(string):
+    string = string.replace('[','').replace(']','').replace("'",'').replace(",",'').replace('"','').replace(" ",'').replace('\n', '').replace('{','').replace('}','')
+    string = string.strip()
+    return string
+
+
+def post_processing_for_dpo(questions, rag_result, llm_result):
+    if type(questions) is str:
+        questions = [string_processing(question) for question in questions.split('<eos>') if len(question) > 5]
+        rag_answers = [string_processing(rag_result) for answer in rag_result.split('<eos>') if len(answer) > 5]
+        llm_answers = [string_processing(answer) for answer in llm_result.split('<eos>') if len(answer) > 5]
+    else:
+        questions = [question.replace("<eos>","") for question in questions]
+        rag_answers, llm_answers = rag_result, llm_result
+
     if len(questions) != len(rag_answers) or len(questions) != len(llm_answers):
         raise ValueError("The number of questions does not match the number of answers.")
 
@@ -495,22 +558,23 @@ def post_processing_for_dpo(questions, rag_result, llm_result):
             "question": [
                 {
                     "from": "human",
-                    "value": questions[i].strip().replace('[','').replace(']','').replace("'",'').replace(",",'').replace('"','').replace(" ",'')
+                    "value": questions[i]
                 }
             ],
             "chosen": {
                 "from": "gpt",
-                "value": rag_answers[i].strip().replace('<eos>','').replace('[','').replace(']','').replace("'",'').replace(",",'').replace('"','').replace(" ",'')
+                "value": rag_answers[i]
             },
             "rejected": {
                 "from": "gpt",
-                "value": llm_answers[i].strip().replace('<eos>','').replace('[','').replace(']','').replace("'",'').replace(",",'').replace('"','').replace(" ",'')
+                "value": llm_answers[i]
             }
         }
         json_result += json.dumps(entry, ensure_ascii=False)+ '\n'
         
     # data.append(json_result)    
     return json_result
+
 
 def dump_into_json(json_result):
     now = datetime.now()
@@ -519,6 +583,7 @@ def dump_into_json(json_result):
     with open(f'/home/mth/RAG-Align/output_data/dpo-data_{formatted_date}.jsonl', 'a', encoding='utf-8') as file:
         for line in [json_result]:
             file.write(line) 
+
 
 def visualize_embeddings(original_query, queries, results, text, collection_name, file_path):
     # character_splitter = RecursiveCharacterTextSplitter(#separators=["\n\n", "\n", ". ", " ", ""],英文文档的分割符示例
@@ -570,14 +635,70 @@ def visualize_embeddings(original_query, queries, results, text, collection_name
                            projected_augmented_query_embedding, projected_retrieved_embeddings)
     return plot
 
-def decorate(x):
-    # 复制输入的数据框
-    df = x.copy()
 
-    # 定义一个函数来为特定的列添加样式
-    df[['Matrix']] = 'color: orange'
-    # df[['Matrix']] = 'width: 100px'
+def conversation_concat(inter_questions, rag_inter_answers, numbers, running='demo', mode='single', second_questions=None):
+    if type(inter_questions) is str:
+        inter_questions = [string_processing(inter_question) for inter_question in inter_questions.split('<eos>') if len(inter_question) > 5]
+        rag_answers = [string_processing(answer) for answer in rag_inter_answers.split('<eos>') if len(answer) > 5]
+        if second_questions is not None:
+            second_questions = [string_processing(question) for question in second_questions.split('<eos>') if len(question) > 5]
+    else:
+        inter_questions = [question.replace("<eos>","") for question in inter_questions]
+        rag_answers = [answer.replace("<eos>","") for answer in rag_inter_answers]
+        if second_questions is not None:
+            second_questions = second_questions
+            print(len(inter_questions),len(rag_answers),len(second_questions))
 
-    # 显示或返回样式化后的 DataFrame
-    return df
+    json_result = ""
+    list_result = []
+    for i in range(numbers):
+        if mode == 'single':
+            entry = [
+                {
+                    "from": "human",
+                    "value": inter_questions[i]
+                },
+                {
+                    "from": "gpt",
+                    "value": rag_answers[i]
+                }
+                ]
+        elif mode == 'stepback':
+            entry = [
+                {
+                    "from": "human",
+                    "value": second_questions[i]
+                },
+                {
+                    "from": "gpt",
+                    "value": rag_answers[i]
+                },
+                {
+                    "from": "human",
+                    "value": inter_questions[i]
+                }
+                    ]
+    
+        else:
+            entry = [
+                {
+                    "from": "human",
+                    "value": inter_questions[i]
+                },
+                {
+                    "from": "gpt",
+                    "value": rag_answers[i]
+                },
+                {
+                    "from": "human",
+                    "value": second_questions[i]
+                }
+                    ]
 
+        if running == "terminal":
+            list_result.append(entry)
+        else:
+            json_result += json.dumps(entry, ensure_ascii=False) + '<eos>'
+    
+    return_result = list_result if running == "terminal" else json_result
+    return return_result     

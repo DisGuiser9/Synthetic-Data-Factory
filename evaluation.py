@@ -26,7 +26,7 @@ class AnswerEvaluator:
     def __init__(self):
         self.path = '/share149/huggingface/models--meta-llama--Meta-Llama-3.1-8B-Instruct/snapshots/4281e96c7cf5ab6b312ef0cb78373efa3976a9dd'
         self.model = AutoModelForCausalLM.from_pretrained(self.path)
-        self.device = torch.device("cuda:9" if torch.cuda.is_available() else "cpu")
+        self.device = torch.device("cuda:3" if torch.cuda.is_available() else "cpu")
         self.tokenizer = AutoTokenizer.from_pretrained(self.path)
 
         self.gpt_preference1 = []
@@ -260,13 +260,13 @@ def setup_logging():
         datefmt='%Y-%m-%d %H:%M:%S'
     )
 
-def evaluation(questions, rag_answer, llm_answer):
+def evaluation(questions, rag_answers, llm_answers):
     # setup_logging()
     now = datetime.now()
     current_date = now.date()
     formatted_date = current_date.strftime("%Y-%m-%d")
 
-    if llm_answer is None:
+    if questions is None:
         results = pd.DataFrame(
             {
             "Matrix": ["keyword_matches", "freq_similarities", "Perplexity"],
@@ -275,13 +275,14 @@ def evaluation(questions, rag_answer, llm_answer):
             }
             )
     evaluator = AnswerEvaluator()
-    questions = [question.replace('\n', '').strip() for question in questions.split('<eos>') if len(question) >=5]
-    n = len(questions)
-    rag_answers = [answer.replace('\n', '').strip() for answer in rag_answer.split('<eos>') if len(answer) >=5]
-    llm_answers = [answer.replace('\n', '').strip() for answer in llm_answer.split('<eos>') if len(answer) >=5]
-    rag_answers = rag_answers[:n]
-    llm_answers = llm_answers[:n]
-    print(len(questions), len(rag_answers), len(llm_answers))
+    if type(questions) is str:
+        questions = [question.replace('\n', '').strip() for question in questions.split('<eos>') if len(question) >=5]
+        n = len(questions)
+        rag_answers = [answer.replace('\n', '').strip() for answer in rag_answers.split('<eos>') if len(answer) >=5]
+        llm_answers = [answer.replace('\n', '').strip() for answer in llm_answers.split('<eos>') if len(answer) >=5]
+        rag_answers = rag_answers[:n]
+        llm_answers = llm_answers[:n]
+        print(f"评测完成，评测数据长度{len(questions), len(rag_answers), len(llm_answers)}")
 
     evaluator.evaluate(questions, rag_answers, llm_answers)
     results = evaluator.calculate()

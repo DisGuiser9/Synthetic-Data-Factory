@@ -13,4 +13,7 @@ transformers
 ollama
 scikit-learn 
 umap-learn 
+trulens-eval
 sentence_transformers
+flashrank
+fastembed

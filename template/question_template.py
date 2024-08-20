@@ -23,7 +23,7 @@ def single_turn_prompt_template():
                             我将提供与外贸领域相关的文本，请你按照以下步骤操作：                            
                             1.你必须参考我给你的，与文本主旨最相关的内容{context}，这些内容已按照与文本主旨相关性进行了降序排列，越靠前的主题越相关。
                             2.根据排序文本概括这段文本内容，并根据此生成{number}个相关问题。这些问题的答案必须存在于文本中，并且与原始文本紧密相关。
-                            3.确保每个问题都是完整的句子，且两个问题不相关；只输出问题本身，不需要提供答案、分析或总结。禁止输出标号！！！
+                            3.确保每个问题都是完整的句子，且两个问题不相关；只输出问题本身，不需要提供答案、分析或总结。
                             4.生成的问题应该简短明了，避免使用复合句，禁止输出无意义或意义不明的问题。
                             """
     instruction_prompt = PromptTemplate.from_template(instruction_template)
@@ -39,11 +39,11 @@ def single_turn_prompt_template():
 
     example_template = """
                 以下是几个优秀的例子：
-                1. 液体类货物的包装有何特殊要求？
-                2. 国际货物买卖引起的国际贸易结算为什么需要研究票据行为规律？
-                3. 在会计规范体系中，合法性、合理性和实践性分别对应什么？
+                液体类货物的包装有何特殊要求？
+                国际货物买卖引起的国际贸易结算为什么需要研究票据行为规律？
+                在会计规范体系中，合法性、合理性和实践性分别对应什么？
                 以下是不合格的例子，存在意义不明、有歧义的问题：
-                1. 目的港是哪里？（问题不完整存在歧义）
+                目的港是哪里？（问题不完整存在歧义）
                 """
     example_prompt = PromptTemplate.from_template(example_template)
 
@@ -54,8 +54,8 @@ def single_turn_prompt_template():
         ("example", example_prompt),
     ]
 
-    SINGLE_TURN_TEMPLATE = PipelinePromptTemplate(final_prompt=full_prompt, pipeline_prompts=input_prompts)
-
+    # SINGLE_TURN_TEMPLATE = PipelinePromptTemplate(final_prompt=full_prompt, pipeline_prompts=input_prompts)
+    SINGLE_TURN_TEMPLATE = PromptTemplate.from_template(system_template + instruction_template + notice_template + example_template)
     return SINGLE_TURN_TEMPLATE
 
 
@@ -138,15 +138,16 @@ def augment_dialogue_prompt_template():
     input_prompts = [
         ("system", system_prompt),
         ("instruction", instruction_prompt),
-        ("notice", notice_prompt)
+        ("notice", notice_prompt),
     ]
-    AUGMENT_DIALOGUE_TEMPLATE = PipelinePromptTemplate(final_prompt=full_template, pipeline_prompts=input_prompts)
+    # AUGMENT_DIALOGUE_TEMPLATE = PipelinePromptTemplate(final_prompt=full_template, pipeline_prompts=input_prompts)
+    AUGMENT_DIALOGUE_TEMPLATE = PromptTemplate.from_template(system_template + instruction_template + notice_template)
     return AUGMENT_DIALOGUE_TEMPLATE
 
 
 def literary_prompt_template():
     """
-    input_variables in chain: file_name, literary, context;
+    input_variables in chain: file_name, literary, context, dialogue;
     literary example: 博客、报纸、教案、 文章
     """
     final_template = """
@@ -155,6 +156,8 @@ def literary_prompt_template():
             {instruction}
 
             {notice}
+
+            {example}
             """
     full_prompt = PromptTemplate.from_template(final_template)
 
@@ -165,25 +168,41 @@ def literary_prompt_template():
     system_prompt = PromptTemplate.from_template(system_template)
 
     instruction_template = """
-                            这是一段与文本主旨最相关的内容{context}，请模型总结以上文本的内容：
-                            先整合成一份元提示词：
-                            再生成最后的目标提示词：
+                            这是一段与文本主旨最相关的内容{context}，另外还有一段对话{dialogue}，请模型按以下步骤一步步完成：
+                            1. 第一步，理解对话内容：
+                            2. 第二步，总结主旨相关内容：
+                            3. 第三步，简要概述所需文体的核心特征
+                            4. 最后，组合并生成最后的目标提示词：
+                            只要生成最后的目标提示词！！
                             """
     instruction_prompt = PromptTemplate.from_template(instruction_template)
 
     notice_template = """
-                必须只输出这个提示词!输出中文！提示词长度必须在包含所给文本，必须具体且没有歧义！
-                输出提示词的长度应在200字左右，包括相关内容总结和文体要求！
-                只需要输出最后的目标提示词！
-                以下是一个例子：
-                元提示词：这段文章的主旨是“现行有关国际结算的规则与惯例有哪些？”，需要一份文体形式为报告的文本
-                目标提示词：请你写一段报告，主题为“现行有关国际结算的规则与惯例有哪些？”
+                必须只输出最后的目标提示词!输出中文！提示词长度必须在包含所给文本，必须具体且没有歧义！
+                输出提示词的长度应在200字左右，必须包括与对话有关、总结相关内容、和文体要求！
+                只需要输出最后的目标提示词！！！
                 """
     notice_prompt = PromptTemplate.from_template(notice_template)
+
+    example_template = """
+                以下是一个目标提示词例子：
+                这段对话讨论了“金融机构支持外贸综合服务企业的融资需求主要通过信用证打包贷款、出口押汇、
+                保理业务和供应链金融等方式。这些服务能有效减轻企业资金压力，并根据企业信用状况提供定制化融资方案以增强服务的有效性。”，                
+                文章的主旨是“金融机构支持外贸综合服务企业的融资需求可以通过以下几种方式：
+                1.信用证打包贷款：银行为持有进口商开立信用证的出口商提供短期贷款，用以支持货物采购、生产和装运等环节的资金需求。
+                2.出口押汇：出口商发货后，可以将出口单据质押给银行，银行根据单据价值预先支付一定比例的款项，加速出口商的资金回笼。
+                3.保理业务：银行或保理公司购买出口商的应收账款，为其提供融资、账款管理及信用风险担保等服务。
+                4.供应链金融：围绕核心企业，整合上下游中小企业的物流、信息流和资金流，提供包括但不限于应收账款融资、预付款融资等在内的综合性金融服务。
+                此外，金融机构还可以根据企业的具体需求和信用状况，提供定制化的融资方案，利用如报关单、税单等数据进行风险评估，开发无抵押、纯信用的线上信贷产品，以提高融资效率和支持力度。”，需要一份文体形式为报告的文本
+                请你写一份报告，要求目的明确，语气正式，语言简洁清晰易懂，针对性强。
+                """
+    example_prompt = PromptTemplate.from_template(example_template)
+    
     input_prompts = [
         ("system", system_prompt),
         ("instruction", instruction_prompt),
-        ("notice", notice_prompt)
+        ("notice", notice_prompt),
+        ("example", example_prompt)
     ]
     LITERARY_PROMPT_TEMPLATE = PipelinePromptTemplate(final_prompt=full_prompt, pipeline_prompts=input_prompts)
     return LITERARY_PROMPT_TEMPLATE
