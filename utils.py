@@ -294,13 +294,13 @@ def seed_prompt_generation(model, documents, numbers, mode:Optional[str] = "sing
     output = text_splitter.split_documents(output)
     
     vector_db = Chroma.from_documents(output, embedding=embedding_function)
-    retriever = vector_db.as_retriever(search_type="mmr", search_kwargs={"k": max(numbers,5), "lambda_mult": 0.3})
+    retriever = vector_db.as_retriever(search_type="mmr", search_kwargs={"k": max(numbers,10), "lambda_mult": 0.3})
 
     compressor = FlashrankRerank()
     compression_retriever = ContextualCompressionRetriever(
         base_compressor=compressor, base_retriever=retriever
     )
-    docs = compression_retriever.invoke(f"关于{file_name}，你可以告诉我什么？请返回更多样全面的信息。")
+    docs = compression_retriever.invoke(f"关于{file_name}，你可以告诉我什么相关知识？请返回更全面的有关信息，并过滤所有无关的、有特定场景的信息。")
     reordering = LongContextReorder()
     
     PROMPT_TEMPLATE, _, _ = prompt_choices(mode=mode)
@@ -371,7 +371,7 @@ def multi_prompts_generation(model, documents, numbers, inter_questions, rag_int
 
     list_results = []
     for i in tqdm(range(len(dialogues))):
-        docs = compression_retriever.invoke(f"你认为{dialogues[i]}与本文哪些内容有关？请返回更多样全面的信息。")
+        docs = compression_retriever.invoke(f"你认为{dialogues[i]}与本文哪些核心内容有关？请返回更全面的有关信息，并过滤所有无关的、有特定场景的信息。")
         reordering = LongContextReorder()
         
         PROMPT_TEMPLATE, _, _ = prompt_choices(mode=mode)
@@ -443,7 +443,7 @@ def retrieve_answer(model, extended_queries, documents, _top_k, _top_p, running=
         while query[0] in ['[', ' ', '"', "'", '"', ","]:
             query = query[1:]
 
-        docs = ensemble_retriever.invoke(f"关于{file_name}，请提供所有与提问{query}相关的详细信息和回答。")
+        docs = ensemble_retriever.invoke(f"关于{file_name}，请提供所有与内容{query}相关的详细信息和回答。")
         reordering = LongContextReorder()
         reordered_docs = reordering.transform_documents(docs)
         
@@ -542,7 +542,7 @@ def string_processing(string):
     return string
 
 
-def post_processing_for_dpo(questions, rag_result, llm_result):
+def post_processing_for_dpo(questions, rag_result, llm_result, mode, dialogue):
     if isinstance(questions, str):
         questions = [string_processing(question) for question in questions.split('<eos>') if len(question) > 5]
         rag_answers = [string_processing(rag_result) for answer in rag_result.split('<eos>') if len(answer) > 5]
@@ -561,24 +561,38 @@ def post_processing_for_dpo(questions, rag_result, llm_result):
     # data = []
     json_result = ""
     for i in range(len(questions)):
-        entry = {
-            "question": [
-                {
-                    "from": "human",
-                    "value": questions[i]
+        if mode == "single":
+            entry = {
+                "question": [
+                    {
+                        "from": "human",
+                        "value": questions[i]
+                    }
+                ],
+                "chosen": {
+                    "from": "gpt",
+                    "value": rag_answers[i]
+                },
+                "rejected": {
+                    "from": "gpt",
+                    "value": llm_answers[i]
                 }
-            ],
-            "chosen": {
-                "from": "gpt",
-                "value": rag_answers[i]
-            },
-            "rejected": {
-                "from": "gpt",
-                "value": llm_answers[i]
             }
-        }
-        json_result += json.dumps(entry, ensure_ascii=False)+ '\n'
-        
+        else:
+            entry = {
+                "question": dialogue,
+                "chosen": {
+                    "from": "gpt",
+                    "value": rag_answers[i]
+                },
+                "rejected": {
+                    "from": "gpt",
+                    "value": llm_answers[i]
+                }
+            }
+            json_result += json.dumps(entry, ensure_ascii=False)+ '\n'
+
+
     # data.append(json_result)    
     return json_result
 

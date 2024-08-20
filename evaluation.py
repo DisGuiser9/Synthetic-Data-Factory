@@ -26,7 +26,7 @@ tokenizer = AutoTokenizer.from_pretrained(path)
 class AnswerEvaluator:
     def __init__(self):
 
-        self.device = torch.device("cuda:3" if torch.cuda.is_available() else "cpu")
+        self.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
         self.gpt_preference1 = []
         self.gpt_preference2 = []

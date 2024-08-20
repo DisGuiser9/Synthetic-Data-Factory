@@ -20,11 +20,11 @@ def parse_args():
                         help='Work with top_k')
 
     parser.add_argument('--file_name', type=str, 
-                        default='报关实务 282.jsonl',
+                        default='all',
                         help='The file name to be chosen, and will be concated with the original root path')
     
     parser.add_argument('--numbers', type=int, 
-                        default=2,
+                        default=12,
                         help='The number of augmented queries, ranging from [1, 20]')
     
     parser.add_argument('--langcode', type=str, 
@@ -36,7 +36,7 @@ def parse_args():
                         help='The type of the dataset, could be dpo/sft')
     
     parser.add_argument('--mode', type=str,
-                        default='literary',
+                        default='single',
                         help='The number of turns in questions')
     
     parser.add_argument('--literary', type=str,
@@ -46,27 +46,18 @@ def parse_args():
     args = parser.parse_args()
     return args
     
-def post_processing(seed_prompts, rag_content, llm_content, dataset_type='dpo'):
-        score_dataframe = evaluation(seed_prompts, rag_content, llm_content)
-        if dataset_type == 'dpo':
-            processed_dataset = post_processing_for_dpo(seed_prompts, rag_content, llm_content)
-        dataset = dump_into_json(processed_dataset)
-        return score_dataframe, dataset
+def post_processing(seed_prompts, rag_content, llm_content, mode, dialogue=None):
+    score_dataframe = evaluation(seed_prompts, rag_content, llm_content)
+    # if dataset_type == 'dpo':
+    processed_dataset = post_processing_for_dpo(seed_prompts, rag_content, llm_content, mode, dialogue)
+    dataset = dump_into_json(processed_dataset)
+    return score_dataframe, dataset
 
 def main():
     args = parse_args()
     directory = '/data/share9/XPT/dataset/dataset_8/book/data'
     running = 'terminal'
-    # model = "qwen2:72b-instruct-fp16"
-    # Get the files in the directory
-    files_list = get_files_in_directory(directory, return_paths=True)
-    files_choices = [os.path.basename(files) for files in files_list]
-    file_name = args.file_name
-    if file_name not in files_choices:
-        raise ValueError('The file you choose is not in the directory')
-    else:
-        file_path = os.path.join(directory, file_name)
-        print(f"获取文件{file_path}中...")
+
 
     # Get the model in the model list
     available_model_list = local_ollama_models()
@@ -89,30 +80,46 @@ def main():
     mode = args.mode
     literary = args.literary
 
-    if mode == 'single':
-        seed_prompts = seed_prompt_generation(model, file_path, numbers)
-        rag_content = retrieve_answer(model, seed_prompts, file_path, top_k, top_p, running, mode)
-        llm_content = llm_answer(model, seed_prompts, file_path, top_k, top_p, running, mode)
-        post_processing(seed_prompts, rag_content, llm_content, data_type)
+    # Get the files in the directory
+    files_list = get_files_in_directory(directory, return_paths=True)
+    files_choices = [os.path.basename(files) for files in files_list]
 
-    elif mode == 'stepback':
-        seed_prompts = seed_prompt_generation(model, file_path, numbers, mode='single')    #prev_questions
-        stepback_prompts = seed_prompt_generation(model, file_path, numbers, mode, seed_prompts)
-        intermidiate_answers = retrieve_answer(model, stepback_prompts, file_path, top_k, top_p, running, mode)
-        dialogue = conversation_concat(seed_prompts, intermidiate_answers, numbers, running, mode, stepback_prompts)
-        rag_content = retrieve_answer(model, dialogue, file_path, top_k, top_p, running, mode)
-        llm_content = llm_answer(model, dialogue, file_path, top_k, top_p, running, mode)
-        post_processing(dialogue, rag_content, llm_content, data_type)
-    
-    elif mode == 'literary' or mode == 'augment':
-        seed_prompts = seed_prompt_generation(model, file_path, numbers, mode='single')
-        intermidiate_answers = retrieve_answer(model, seed_prompts, file_path, top_k, top_p, running, mode)
-        second_prompts = multi_prompts_generation(model, file_path, numbers, seed_prompts, intermidiate_answers, running, mode, None, literary)
-        dialogue = conversation_concat(seed_prompts, intermidiate_answers, numbers, running, mode, second_prompts)
-        rag_content = retrieve_answer(model, dialogue, file_path, top_k, top_p, running, mode)        
-        llm_content = llm_answer(model, dialogue, file_path, top_k, top_p, running, mode)
-        post_processing(dialogue, rag_content, llm_content, data_type)
+    for file_name in files_choices:
+        if args.file_name == file_name:
+            file_path = os.path.join(directory, file_name)
 
+        elif args.file_name == "all":
+            file_path = os.path.join(directory, file_name)
+            print(f"获取文件{file_name}中...")
+        
+            if mode == 'single':
+                seed_prompts = seed_prompt_generation(model, file_path, numbers)
+                rag_content = retrieve_answer(model, seed_prompts, file_path, top_k, top_p, running, mode)
+                llm_content = llm_answer(model, seed_prompts, file_path, top_k, top_p, running, mode)
+                post_processing(seed_prompts, rag_content, llm_content, mode)
+
+            elif mode == 'stepback':
+                seed_prompts = seed_prompt_generation(model, file_path, numbers, mode='single')    #prev_questions
+                stepback_prompts = seed_prompt_generation(model, file_path, numbers, mode, seed_prompts)
+                intermidiate_answers = retrieve_answer(model, stepback_prompts, file_path, top_k, top_p, running, mode)
+                dialogue = conversation_concat(seed_prompts, intermidiate_answers, numbers, running, mode, stepback_prompts)
+                rag_content = retrieve_answer(model, dialogue, file_path, top_k, top_p, running, mode)
+                llm_content = llm_answer(model, dialogue, file_path, top_k, top_p, running, mode)
+                post_processing(seed_prompts, rag_content, llm_content, mode, dialogue)
+            
+            elif mode == 'literary' or mode == 'augment':
+                seed_prompts = seed_prompt_generation(model, file_path, numbers, mode='single')
+                intermidiate_answers = retrieve_answer(model, seed_prompts, file_path, top_k, top_p, running, mode)
+                second_prompts = multi_prompts_generation(model, file_path, numbers, seed_prompts, intermidiate_answers, running, mode, None, literary)
+                dialogue = conversation_concat(seed_prompts, intermidiate_answers, numbers, running, mode, second_prompts)
+                rag_content = retrieve_answer(model, dialogue, file_path, top_k, top_p, running, mode)        
+                llm_content = llm_answer(model, dialogue, file_path, top_k, top_p, running, mode)
+                post_processing(seed_prompts, rag_content, llm_content, mode, dialogue)
+        
+        elif args.file_name != file_name:
+            continue
+        else:
+            raise ValueError('The file name you choose is not in the directory')
 if __name__ == '__main__':
     main()
 
