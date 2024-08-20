@@ -52,3 +52,11 @@ git clone https://huggingface.co/BAAI/bge-small-zh-v1.5
     - LongContextReorder
 
 #### Trulenth
+
+
+### TODO
+- Trulenth Evaluation with OpenAI
+- Gradio Adaption(TextBox outputs str format)
+- Template Improvement
+- First Query Templates Enrichment
+- Retrieval Augmentation Improvement
