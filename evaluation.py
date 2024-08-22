@@ -19,14 +19,14 @@ from rouge_score import rouge_scorer
 
 # path = '/share149/huggingface/models--meta-llama--Meta-Llama-3-70B/snapshots/b4d08b7db49d488da3ac49adf25a6b9ac01ae338'
 tool = language_tool_python.LanguageTool('zh-CN')
-path = '/share149/huggingface/models--meta-llama--Meta-Llama-3.1-8B-Instruct/snapshots/4281e96c7cf5ab6b312ef0cb78373efa3976a9dd'
+path = '/share148/huggingface/models--meta-llama--Meta-Llama-3-8B/snapshots/62bd457b6fe961a42a631306577e622c83876cb6'
 model = AutoModelForCausalLM.from_pretrained(path)
 tokenizer = AutoTokenizer.from_pretrained(path)
 
 class AnswerEvaluator:
     def __init__(self):
 
-        self.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+        self.device = torch.device("cuda:9" if torch.cuda.is_available() else "cpu")
 
         self.gpt_preference1 = []
         self.gpt_preference2 = []

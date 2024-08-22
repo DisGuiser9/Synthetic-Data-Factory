@@ -73,6 +73,7 @@ def load_file_to_text(file_path) -> List:
     
     return documents_text
 
+
 def get_files_in_directory(directory, return_paths=False):
     """
     获取指定目录下的所有JSONL文件。
@@ -80,6 +81,7 @@ def get_files_in_directory(directory, return_paths=False):
     """
     files = [file for file in os.listdir(directory) if file.endswith('.jsonl') and os.path.isfile(os.path.join(directory, file))]
     return [os.path.join(directory, file) if return_paths else file for file in files]
+
 
 def local_ollama_models():
     url = "http://127.0.0.1:11434/api/tags"  
@@ -98,8 +100,10 @@ def local_ollama_models():
         print(f"请求错误：{e}")
     return models_list
 
+
 def get_ollama_model(model):
     return model
+
 
 def get_collection_name(selected_file):
     """根据所选文件路径，返回文件名"""
@@ -265,7 +269,7 @@ def augment_multiple_query(model, query, numbers):
 
 
 def seed_prompt_generation(model, documents, numbers, mode:Optional[str] = "single", prev_question:Optional[str] = None,
-                           dialogue:Optional[str] = None, literary: Optional[str] = "博客"):
+                           dialogues:Optional[str] = None, literary: Optional[str] = "博客"):
     with open(documents, "r", encoding='utf-8') as f:
         data = []
         for line in f:
@@ -289,18 +293,18 @@ def seed_prompt_generation(model, documents, numbers, mode:Optional[str] = "sing
     parser = MyParser()
     output = parser.lazy_parse(searching_blob)
 
-    text_splitter = RecursiveCharacterTextSplitter(chunk_size=max(_chunk_size,3000),chunk_overlap=max(_chunk_overlap,300), add_start_index=True,
+    text_splitter = RecursiveCharacterTextSplitter(chunk_size=min(_chunk_size,3000),chunk_overlap=min(_chunk_overlap,300), add_start_index=True,
                                                     length_function=len,is_separator_regex=False)
     output = text_splitter.split_documents(output)
     
     vector_db = Chroma.from_documents(output, embedding=embedding_function)
-    retriever = vector_db.as_retriever(search_type="mmr", search_kwargs={"k": max(numbers,10), "lambda_mult": 0.3})
+    retriever = vector_db.as_retriever(search_type="mmr", search_kwargs={"k": max(numbers, 20), "fetch_k": 50})
 
-    compressor = FlashrankRerank()
+    compressor = FlashrankRerank(top_n=10)
     compression_retriever = ContextualCompressionRetriever(
         base_compressor=compressor, base_retriever=retriever
     )
-    docs = compression_retriever.invoke(f"关于{file_name}，你可以告诉我什么相关知识？请返回更全面的有关信息，并过滤所有无关的、有特定场景的信息。")
+    docs = compression_retriever.invoke(f"关于{file_name}，你可以告诉我什么相关知识？请返回更全面的有关信息，并过滤所有无关的、有特定场景或任何人名的信息。")
     reordering = LongContextReorder()
     
     PROMPT_TEMPLATE, _, _ = prompt_choices(mode=mode)
@@ -310,7 +314,9 @@ def seed_prompt_generation(model, documents, numbers, mode:Optional[str] = "sing
 
     input_variables_dict = {
         "single": {"file_name":file_name, "context":reordered_docs, "number":numbers},
-        "stepback": {"file_name":file_name, "context":reordered_docs}
+        "stepback": {"file_name":file_name, "context":reordered_docs},
+        "augment": {"file_name":file_name, "context":reordered_docs, "dialogue":dialogues},
+        "literary": {"file_name":file_name, "context":reordered_docs, "dialogue":dialogues, "literary":literary}
     }
     input_variables = input_variables_dict.get(mode)
     input_variables["query"] = "请按要求生成提问"      #invoke function must have key "query"
@@ -326,10 +332,13 @@ def seed_prompt_generation(model, documents, numbers, mode:Optional[str] = "sing
             question = line.strip() + '<eos>'
             if len(question) >= 10:
                 generated_prompts.append(question)
-    return generated_prompts
+    
+    print(f"问题为{(generated_prompts)}")
+    
+    return generated_prompts[:numbers]
 
-def multi_prompts_generation(model, documents, numbers, inter_questions, rag_inter_answers,running='demo',
-                             mode:Optional[str] = "single", prev_question:Optional[str] = None,literary: Optional[str] = None):
+def multi_prompts_generation(model, documents, numbers, seed_questions, rag_inter_answers,running='demo',
+                             mode:Optional[str] = "single", literary: Optional[str] = None):
     with open(documents, "r", encoding='utf-8') as f:
         data = []
         for line in f:
@@ -357,14 +366,14 @@ def multi_prompts_generation(model, documents, numbers, inter_questions, rag_int
     output = text_splitter.split_documents(output)
     
     vector_db = Chroma.from_documents(output, embedding=embedding_function)
-    retriever = vector_db.as_retriever(search_type="mmr", search_kwargs={"k": max(numbers,10), "lambda_mult": 0.3})
+    retriever = vector_db.as_retriever(search_type="mmr", search_kwargs={"k": max(numbers, 20), "fetch_k": 50})
 
-    compressor = FlashrankRerank()
+    compressor = FlashrankRerank(top_n=10)
     compression_retriever = ContextualCompressionRetriever(
         base_compressor=compressor, base_retriever=retriever
     )
     
-    dialogues = conversation_concat(inter_questions, rag_inter_answers, numbers, running)
+    dialogues = conversation_concat(seed_questions, rag_inter_answers, numbers, running)     #single模式下先整合前两句对话
     if type(dialogues) is str:
         str_results = ''
         dialogues = [string_processing(dialogue) for dialogue in dialogues.split('<eos>')]
@@ -381,9 +390,8 @@ def multi_prompts_generation(model, documents, numbers, inter_questions, rag_int
 
         input_variables_dict = {
             "single": {"file_name":file_name, "context":reordered_docs, "number":numbers},
-            "stepback": {"file_name":file_name, "context":reordered_docs, "question":prev_question},
-            "augment": {"file_name":file_name, "context":reordered_docs, "dialogue":dialogues[i]},
-            "literary": {"file_name":file_name, "context":reordered_docs, "dialogue":dialogues[i], "literary":literary}
+            "augment": {"file_name":file_name, "context":reordered_docs, "prompt":dialogues[i]},
+            "literary": {"file_name":file_name, "context":reordered_docs, "prompt":dialogues[i], "literary":literary}
         }
         input_variables = input_variables_dict.get(mode)
         input_variables["query"] = "请按要求生成提问"
@@ -397,8 +405,8 @@ def multi_prompts_generation(model, documents, numbers, inter_questions, rag_int
     
     return return_results
 
-def retrieve_answer(model, extended_queries, documents, _top_k, _top_p, running='demo',mode: Optional[str] = "single",literary: Optional[str] = "博客",
-                    conversation_aug: Optional[str] = None, conversation_step: Optional[str] = None, dialogue: Optional[str] = None):
+def retrieve_answer(model, extended_queries, documents, _top_k, _top_p, running='demo',mode: Optional[str] = "single",
+                    literary: Optional[str] = "博客", second_questions:Optional[str] = None):
     llm = Ollama(model=model, top_k=_top_k, top_p=_top_p)
     embedding_function = get_embeddings_function("zh")
 
@@ -416,11 +424,11 @@ def retrieve_answer(model, extended_queries, documents, _top_k, _top_p, running=
 
     # Sparse and Dense retrieval
     vector_db = Chroma.from_documents(output, embedding=embedding_function)   
-    retriever = vector_db.as_retriever(search_type="mmr", search_kwargs={"k": 5, "lambda_mult": 0.25})
+    retriever = vector_db.as_retriever(search_type="mmr", search_kwargs={"k": 5, "fetch": 30})
     bm25_retriever = BM25Retriever.from_documents(output)
     bm25_retriever.k = 5
 
-    compressor = FlashrankRerank()
+    compressor = FlashrankRerank(top_n=3)
     compression_retriever = ContextualCompressionRetriever(
         base_compressor=compressor, base_retriever=retriever
     )
@@ -438,23 +446,26 @@ def retrieve_answer(model, extended_queries, documents, _top_k, _top_p, running=
         else:
             extended_queries = [query.replace('<eos>','') for query in extended_queries if len(query.strip()) > 5]
         list_results = []
+    
+    n = len(extended_queries)
 
-    for query in tqdm(extended_queries):
-        while query[0] in ['[', ' ', '"', "'", '"', ","]:
-            query = query[1:]
-
-        docs = ensemble_retriever.invoke(f"关于{file_name}，请提供所有与内容{query}相关的详细信息和回答。")
+    for index in tqdm(range(n)):
+        if mode == "single":
+            docs = ensemble_retriever.invoke(f"关于{file_name}，请提供所有与{extended_queries[index]}相关的详细信息和回答。")
+        elif mode == "stepback" and  second_questions is not None:
+            docs = ensemble_retriever.invoke(f"关于{file_name}，请提供所有与{second_questions[index]}相关的详细信息和回答。")
         reordering = LongContextReorder()
         reordered_docs = reordering.transform_documents(docs)
         
-        # invoke function should have key words "query"
         input_variables_dict = {
-        "single": {"file_name":file_name, "context":reordered_docs, "query":query},
-        "stepback": {"file_name":file_name, "context":reordered_docs, "query":conversation_step},
-        "augment": {"file_name":file_name, "context":reordered_docs, "query":conversation_aug},
-        "literary": {"file_name":file_name, "context":reordered_docs, "literary":literary, "query":dialogue}
+        "single": {"file_name":file_name, "context":reordered_docs, "prompt":extended_queries[index]},
+        "stepback": {"file_name":file_name, "context":reordered_docs, "prompt":extended_queries[index], "question":second_questions[index]},
+        "augment": {"file_name":file_name, "context":reordered_docs, "prompt":extended_queries[index], "question":second_questions[index]},
+        "literary": {"file_name":file_name, "context":reordered_docs, "literary":literary, "prompt":extended_queries[index],"question":second_questions[index]}
         }
-        input_variables = input_variables_dict.get(mode)
+        input_variables = input_variables_dict.get(mode)        
+        # invoke function should have key words "query"
+        input_variables["query"] = "请按要求回答问题"
         result = chain.invoke(input_variables) 
         if running == "terminal":
             list_results.append(result)
@@ -464,8 +475,7 @@ def retrieve_answer(model, extended_queries, documents, _top_k, _top_p, running=
     return_results = list_results if running == "terminal" else str_results
     return return_results
 
-def llm_answer(model, extended_queries, documents, _top_k, _top_p, running="demo", mode:Optional[str] = "single", literary: Optional[str] = "博客",
-                  conversation_aug: Optional[str] = None, conversation_step: Optional[str] = None, dialogue: Optional[str] = None):
+def llm_answer(model, extended_queries, documents, _top_k, _top_p, running="demo", mode:Optional[str] = "single", literary: Optional[str] = "博客"):
     llm = Ollama(model=model, top_k=_top_k, top_p=_top_p)
     full_file_name = os.path.split(documents)[1]
     file_name, _ = os.path.splitext(full_file_name)
@@ -486,14 +496,15 @@ def llm_answer(model, extended_queries, documents, _top_k, _top_p, running="demo
         extended_queries = [string_processing(query) for query in extended_queries.split('<eos>') if len(query.strip()) > 5]
 
     for query in tqdm(extended_queries):
-        # invoke function should have key words "query"
         input_variables_dict = {
-        "single": {"file_name":file_name, "query":query},
-        "stepback": {"file_name":file_name, "query":conversation_step},
-        "augment": {"file_name":file_name, "query":conversation_aug},
-        "literary": {"file_name":file_name, "literary":literary, "query":dialogue}
+        "single": {"file_name":file_name, "prompt":query},
+        "stepback": {"file_name":file_name, "prompt":query},
+        "augment": {"file_name":file_name, "prompt":query},
+        "literary": {"file_name":file_name, "literary":literary, "prompt":query}
         }
         input_variables = input_variables_dict.get(mode)
+        # invoke function should have key words "query"
+        input_variables["query"] = "请按要求回答问题"
         result = chain.invoke(input_variables)
         if running == "terminal":
             list_results.append(result)
@@ -541,6 +552,40 @@ def string_processing(string):
     string = string.strip()
     return string
 
+def post_processing_for_sft(seed_prompts, rag_result, mode, dialogue):
+    if isinstance(seed_prompts, str):
+        seed_prompts = [string_processing(prompt) for prompt in seed_prompts.split('<eos>') if len(prompt) > 5]
+        rag_result = [string_processing(answer) for answer in rag_result.split('<eos>') if len(answer) > 5]
+    elif isinstance(seed_prompts, list):
+        if isinstance(seed_prompts[0],list):
+            seed_prompts = seed_prompts
+        else:
+            seed_prompts = [prompt.replace("<eos>","") for prompt in seed_prompts]
+        
+        output = rag_result
+
+    if len(seed_prompts) != len(output):
+        raise ValueError("The number of questions does not match the number of answers.")
+
+    json_result = ""
+
+    for i in range(len(seed_prompts)):
+        if mode == "single":
+            entry = {
+                "instruction": seed_prompts[i],
+                "input": "",
+                "output": output
+            }
+        elif mode == "stepback":
+            entry = {
+                "question": dialogue[i],
+                "input": "",
+                "output": rag_result[i]
+            }
+        json_result += json.dumps(entry) + "\n"
+    
+    return json_result
+    
 
 def post_processing_for_dpo(questions, rag_result, llm_result, mode, dialogue):
     if isinstance(questions, str):
@@ -558,7 +603,6 @@ def post_processing_for_dpo(questions, rag_result, llm_result, mode, dialogue):
     if len(questions) != len(rag_answers) or len(questions) != len(llm_answers):
         raise ValueError("The number of questions does not match the number of answers.")
 
-    # data = []
     json_result = ""
     for i in range(len(questions)):
         if mode == "single":
@@ -580,7 +624,7 @@ def post_processing_for_dpo(questions, rag_result, llm_result, mode, dialogue):
             }
         else:
             entry = {
-                "question": dialogue,
+                "question": dialogue[i],
                 "chosen": {
                     "from": "gpt",
                     "value": rag_answers[i]
@@ -657,18 +701,18 @@ def visualize_embeddings(original_query, queries, results, text, collection_name
     return plot
 
 
-def conversation_concat(inter_questions, rag_inter_answers, numbers, running='demo', mode='single', second_questions=None):
-    if type(inter_questions) is str:
-        inter_questions = [string_processing(inter_question) for inter_question in inter_questions.split('<eos>') if len(inter_question) > 5]
+def conversation_concat(seed_questions, rag_inter_answers, numbers, running='demo', mode='single', second_questions=None):
+    if type(seed_questions) is str:
+        seed_questions = [string_processing(inter_question) for inter_question in seed_questions.split('<eos>') if len(inter_question) > 5]
         rag_answers = [string_processing(answer) for answer in rag_inter_answers.split('<eos>') if len(answer) > 5]
         if second_questions is not None:
             second_questions = [string_processing(question) for question in second_questions.split('<eos>') if len(question) > 5]
     else:
-        inter_questions = [question.replace("<eos>","") for question in inter_questions]
+        seed_questions = [question.replace("<eos>","") for question in seed_questions]
         rag_answers = [answer.replace("<eos>","") for answer in rag_inter_answers]
         if second_questions is not None:
-            second_questions = second_questions
-            print(len(inter_questions),len(rag_answers),len(second_questions))
+            second_questions = [second_question.replace("<eos>", "") for second_question in second_questions]
+            print(len(seed_questions),len(rag_answers),len(second_questions))
 
     json_result = ""
     list_result = []
@@ -677,18 +721,18 @@ def conversation_concat(inter_questions, rag_inter_answers, numbers, running='de
             entry = [
                 {
                     "from": "human",
-                    "value": inter_questions[i]
+                    "value": seed_questions[i]
                 },
                 {
                     "from": "gpt",
                     "value": rag_answers[i]
                 }
                 ]
-        elif mode == 'stepback':
+        elif mode == 'stepback':   #对话全部完成后，平凑在一起
             entry = [
                 {
                     "from": "human",
-                    "value": second_questions[i]
+                    "value": second_questions[i]      #后退式提问对应于第二个生成的问题
                 },
                 {
                     "from": "gpt",
@@ -696,7 +740,7 @@ def conversation_concat(inter_questions, rag_inter_answers, numbers, running='de
                 },
                 {
                     "from": "human",
-                    "value": inter_questions[i]
+                    "value": seed_questions[i]
                 }
                     ]
     
@@ -704,7 +748,7 @@ def conversation_concat(inter_questions, rag_inter_answers, numbers, running='de
             entry = [
                 {
                     "from": "human",
-                    "value": inter_questions[i]
+                    "value": seed_questions[i]
                 },
                 {
                     "from": "gpt",
@@ -712,7 +756,7 @@ def conversation_concat(inter_questions, rag_inter_answers, numbers, running='de
                 },
                 {
                     "from": "human",
-                    "value": second_questions[i]
+                    "value": second_questions[i]     #增进提问对应于第二个问题的生成
                 }
                     ]
 

@@ -56,6 +56,7 @@ git clone https://huggingface.co/BAAI/bge-small-zh-v1.5
 
 ### TODO
 - Trulenth Evaluation with OpenAI
+- Visualization of Dataset and Synthetic Data
 - Gradio Adaption(TextBox outputs str format)
 - Template Improvement
 - First Query Templates Enrichment

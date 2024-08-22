@@ -24,7 +24,7 @@ def parse_args():
                         help='The file name to be chosen, and will be concated with the original root path')
     
     parser.add_argument('--numbers', type=int, 
-                        default=12,
+                        default=20,
                         help='The number of augmented queries, ranging from [1, 20]')
     
     parser.add_argument('--langcode', type=str, 
@@ -36,7 +36,7 @@ def parse_args():
                         help='The type of the dataset, could be dpo/sft')
     
     parser.add_argument('--mode', type=str,
-                        default='single',
+                        default='stepback',
                         help='The number of turns in questions')
     
     parser.add_argument('--literary', type=str,
@@ -46,10 +46,12 @@ def parse_args():
     args = parser.parse_args()
     return args
     
-def post_processing(seed_prompts, rag_content, llm_content, mode, dialogue=None):
+def post_processing(seed_prompts, rag_content, llm_content, mode, data_type, dialogue=None):
     score_dataframe = evaluation(seed_prompts, rag_content, llm_content)
-    # if dataset_type == 'dpo':
-    processed_dataset = post_processing_for_dpo(seed_prompts, rag_content, llm_content, mode, dialogue)
+    if data_type == 'dpo':
+        processed_dataset = post_processing_for_dpo(seed_prompts, rag_content, llm_content, mode, dialogue)
+    else:
+        processed_dataset = post_processing_for_sft(seed_prompts, rag_content, mode, dialogue)
     dataset = dump_into_json(processed_dataset)
     return score_dataframe, dataset
 
@@ -90,31 +92,31 @@ def main():
 
         elif args.file_name == "all":
             file_path = os.path.join(directory, file_name)
-            print(f"获取文件{file_name}中...")
+            print(f"获取文件《{file_name}》中...")
         
             if mode == 'single':
                 seed_prompts = seed_prompt_generation(model, file_path, numbers)
                 rag_content = retrieve_answer(model, seed_prompts, file_path, top_k, top_p, running, mode)
                 llm_content = llm_answer(model, seed_prompts, file_path, top_k, top_p, running, mode)
-                post_processing(seed_prompts, rag_content, llm_content, mode)
+                post_processing(seed_prompts, rag_content, llm_content, mode, data_type)
 
             elif mode == 'stepback':
-                seed_prompts = seed_prompt_generation(model, file_path, numbers, mode='single')    #prev_questions
-                stepback_prompts = seed_prompt_generation(model, file_path, numbers, mode, seed_prompts)
-                intermidiate_answers = retrieve_answer(model, stepback_prompts, file_path, top_k, top_p, running, mode)
+                seed_prompts = seed_prompt_generation(model, file_path, numbers, mode='single')    #refer to prev_questions
+                stepback_prompts = seed_prompt_generation(model, file_path, numbers, mode='single', prev_question=seed_prompts)
+                intermidiate_answers = retrieve_answer(model, stepback_prompts, file_path, top_k, top_p, running, mode='single', second_questions=seed_prompts)
                 dialogue = conversation_concat(seed_prompts, intermidiate_answers, numbers, running, mode, stepback_prompts)
-                rag_content = retrieve_answer(model, dialogue, file_path, top_k, top_p, running, mode)
+                rag_content = retrieve_answer(model, dialogue, file_path, top_k, top_p, running, mode, second_questions=seed_prompts)
                 llm_content = llm_answer(model, dialogue, file_path, top_k, top_p, running, mode)
-                post_processing(seed_prompts, rag_content, llm_content, mode, dialogue)
+                post_processing(seed_prompts, rag_content, llm_content, mode, data_type, dialogue)
             
             elif mode == 'literary' or mode == 'augment':
                 seed_prompts = seed_prompt_generation(model, file_path, numbers, mode='single')
                 intermidiate_answers = retrieve_answer(model, seed_prompts, file_path, top_k, top_p, running, mode)
-                second_prompts = multi_prompts_generation(model, file_path, numbers, seed_prompts, intermidiate_answers, running, mode, None, literary)
+                second_prompts = multi_prompts_generation(model, file_path, numbers, seed_prompts, intermidiate_answers, running, mode, literary)
                 dialogue = conversation_concat(seed_prompts, intermidiate_answers, numbers, running, mode, second_prompts)
-                rag_content = retrieve_answer(model, dialogue, file_path, top_k, top_p, running, mode)        
-                llm_content = llm_answer(model, dialogue, file_path, top_k, top_p, running, mode)
-                post_processing(seed_prompts, rag_content, llm_content, mode, dialogue)
+                rag_content = retrieve_answer(model, dialogue, file_path, top_k, top_p, running, mode, literary)        
+                llm_content = llm_answer(model, dialogue, file_path, top_k, top_p, running, mode, literary, second_prompts)
+                post_processing(seed_prompts, rag_content, llm_content, mode, data_type, dialogue)
         
         elif args.file_name != file_name:
             continue
