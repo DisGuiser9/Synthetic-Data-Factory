@@ -106,7 +106,7 @@ with gr.Blocks(title="数据合成") as demo:
     button_score.click(fn=evaluation,inputs=[generated_seed_queries, rag_content, llm_content],outputs=score_dataframe)
 
     button_preview.click(fn=post_processing_for_dpo,inputs=[generated_seed_queries, rag_content, llm_content],outputs=output_file_preview)
-    button_save.click(fn=dump_into_json,inputs=[output_file_preview])
+    button_save.click(fn=dump_into_json,inputs=[output_file_preview, output_directory])
 
 
 if __name__ == "__main__":

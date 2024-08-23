@@ -66,12 +66,12 @@ def stepback_rag_template():
     system_prompt = PromptTemplate.from_template(system_template)
 
     instruction_template = """
-            以下是一份对话{prompt}，由“提问、回答、提问”组合而成，主题是{file_name}；
+            以下是一个问题{prompt}，主题是与{file_name}有关；
             请按以下步骤和要求完成任务：
             1. 分析：第一个问题与第二个问题是高度相关的，第一个问题的回答也能作为回答第二个问题的参考；
                     检索内容中可能最只是存在少部分有关语句，分析得到与对话最有关的文本片段
             2. 整合：结合按照先前的对话、分析结果，以及所给的参考资料{context}
-            3. 回答：严格按照分析和整合结果以及要求，详细且专业地回答第二个问题{question}。
+            3. 回答：严格按照分析和整合结果以及要求，详细且专业地回答问题{question}。
             """
     instruction_prompt = PromptTemplate.from_template(instruction_template)
 

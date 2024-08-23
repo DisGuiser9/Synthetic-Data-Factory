@@ -644,11 +644,11 @@ def post_processing_for_dpo(questions, rag_result, llm_result, mode, dialogue):
     return json_result
 
 
-def dump_into_json(json_result):
+def dump_into_json(json_result, output_directory):
     now = datetime.now()
     current_date = now.date()
     formatted_date = current_date.strftime("%Y-%m-%d")
-    with open(f'/home/mth/RAG-Align/output_data/dpo-data_{formatted_date}.jsonl', 'a', encoding='utf-8') as file:
+    with open(f'{output_directory}/dpo-data_{formatted_date}.jsonl', 'a', encoding='utf-8') as file:
         for line in [json_result]:
             file.write(line) 
 
