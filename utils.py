@@ -315,8 +315,8 @@ def seed_prompt_generation(model, documents, numbers, mode:Optional[str] = "sing
     input_variables_dict = {
         "single": {"file_name":file_name, "context":reordered_docs, "number":numbers},
         "stepback": {"file_name":file_name, "context":reordered_docs},
-        "augment": {"file_name":file_name, "context":reordered_docs, "dialogue":dialogues},
-        "literary": {"file_name":file_name, "context":reordered_docs, "dialogue":dialogues, "literary":literary}
+        "augment": {"file_name":file_name, "context":reordered_docs, "prompt":dialogues},
+        "literary": {"file_name":file_name, "context":reordered_docs, "prompt":dialogues, "literary":literary}
     }
     input_variables = input_variables_dict.get(mode)
     input_variables["query"] = "请按要求生成提问"      #invoke function must have key "query"
@@ -338,7 +338,7 @@ def seed_prompt_generation(model, documents, numbers, mode:Optional[str] = "sing
     while len(generated_prompts) != numbers:
         generated_prompts.append("回答一个关于{file_name}的问题")
     
-    return generated_prompts
+    return generated_prompts[:numbers]
 
 def multi_prompts_generation(model, documents, numbers, seed_questions, rag_inter_answers,running='demo',
                              mode:Optional[str] = "single", literary: Optional[str] = None):

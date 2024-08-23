@@ -24,7 +24,7 @@ def parse_args():
                         help='The file name to be chosen, and will be concated with the original root path')
     
     parser.add_argument('--numbers', type=int, 
-                        default=8,
+                        default=6,
                         help='The number of augmented queries, ranging from [1, 20]')
     
     parser.add_argument('--langcode', type=str, 
@@ -36,7 +36,7 @@ def parse_args():
                         help='The type of the dataset, could be dpo/sft')
     
     parser.add_argument('--mode', type=str,
-                        default='stepback',
+                        default='augment',
                         help='The number of turns in questions')
     
     parser.add_argument('--literary', type=str,
@@ -82,6 +82,7 @@ def main():
     mode = args.mode
     literary = args.literary
 
+    print(f"开始{mode}问题类生成……")
     # Get the files in the directory
     files_list = get_files_in_directory(directory, return_paths=True)
     files_choices = [os.path.basename(files) for files in files_list]
@@ -101,10 +102,12 @@ def main():
                 post_processing(seed_prompts, rag_content, llm_content, mode, data_type)
 
             elif mode == 'stepback':
-                seed_prompts = seed_prompt_generation(model, file_path, numbers, mode='single')    #refer to prev_questions
-                stepback_prompts = seed_prompt_generation(model, file_path, numbers, mode='single', prev_question=seed_prompts)
+                seed_prompts = seed_prompt_generation(model, file_path, numbers, mode='single')
+                # 如果下面的mode赋值为single，那就是两个根据文本提取的随机问题；如果保持，就是stepback式问题
+                stepback_prompts = seed_prompt_generation(model, file_path, numbers, mode, prev_question=seed_prompts)
                 intermidiate_answers = retrieve_answer(model, stepback_prompts, file_path, top_k, top_p, running, mode='single', second_questions=seed_prompts)
                 dialogue = conversation_concat(seed_prompts, intermidiate_answers, numbers, running, mode, stepback_prompts)
+                # dialogue在RAG中，和文档一起作为参考资料，抽取第二句问题输入才能获得最好的RAG效果
                 rag_content = retrieve_answer(model, dialogue, file_path, top_k, top_p, running, mode, second_questions=seed_prompts)
                 llm_content = llm_answer(model, dialogue, file_path, top_k, top_p, running, mode)
                 post_processing(seed_prompts, rag_content, llm_content, mode, data_type, dialogue)
@@ -114,6 +117,7 @@ def main():
                 intermidiate_answers = retrieve_answer(model, seed_prompts, file_path, top_k, top_p, running, mode='single', second_questions=seed_prompts)
                 second_prompts = multi_prompts_generation(model, file_path, numbers, seed_prompts, intermidiate_answers, running, mode, literary)
                 dialogue = conversation_concat(seed_prompts, intermidiate_answers, numbers, running, mode, second_prompts)
+                # dialogue在RAG中，和文档一起作为参考资料，抽取第二句问题输入才能获得最好的RAG效果
                 rag_content = retrieve_answer(model, dialogue, file_path, top_k, top_p, running, mode, literary, second_questions=second_prompts)        
                 llm_content = llm_answer(model, dialogue, file_path, top_k, top_p, running, mode, literary)
                 post_processing(seed_prompts, rag_content, llm_content, mode, data_type, dialogue)
