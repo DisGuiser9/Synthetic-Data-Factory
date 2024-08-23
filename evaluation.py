@@ -26,7 +26,7 @@ tokenizer = AutoTokenizer.from_pretrained(path)
 class AnswerEvaluator:
     def __init__(self):
 
-        self.device = torch.device("cuda:9" if torch.cuda.is_available() else "cpu")
+        self.device = torch.device("cuda:8" if torch.cuda.is_available() else "cpu")
 
         self.gpt_preference1 = []
         self.gpt_preference2 = []
@@ -74,7 +74,7 @@ class AnswerEvaluator:
         return rounded_results
 
 
-    def gpt_preference(self, rag_answer, llm_answer):
+    def gpt_preference(self, question, rag_answer, llm_answer):
         def call(query: str):
             client = OpenAI(
                             api_key = "sk-h5ujoj44PqVvQF5P3oH7oMwEGhpvZOqCiH7n2Fma3Od2Fxyz",
@@ -90,8 +90,8 @@ class AnswerEvaluator:
                             )
             content = completion.choices[0].message.content
             return content
-        prompt = """请比较以下两个回答，选择更符合人类偏好且更好地回答问题的回答，并将其判为1，另一个判为0，最后将结果返回为一个数组。评判标准如下：
-                    1.前后逻辑是否一致,是否围绕问题展开回答；
+        prompt = f"""请比较以下两个回答，选择更符合人类偏好且更好地回答问题的回答，并将其判为1，另一个判为0，最后将结果返回为一个数组。评判标准如下：
+                    1.前后逻辑是否一致,是否围绕问题{question}展开回答；
                     2.对于问题的回答是否有理有据、摆事实讲道理。
                     如果回答符合以上标准，应加分；如果回答存在胡言乱语的幻觉现象、前后逻辑看似正确但泛泛而谈、没有实际依据、说了很多但没有回答问题，应扣分。
                     请注意：其中一个回答是经过检索增强生成的，一个回答是没有经过检索增强，直接生成的，所以可能会在某个回答中有一些专有名词等情况，这并不是幻觉，应该加分而并非扣分；
@@ -186,7 +186,7 @@ class AnswerEvaluator:
             self.perplexities1.append(self.calculate_perplexity(rag_answer[i]))
             self.perplexities2.append(self.calculate_perplexity(llm_answer[i]))
 
-            preference_list = ast.literal_eval(self.gpt_preference(rag_answer[i], llm_answer[i]))
+            preference_list = ast.literal_eval(self.gpt_preference(question[i],rag_answer[i], llm_answer[i]))
             self.gpt_preference1.append(preference_list[0])
             self.gpt_preference2.append(preference_list[1])
 

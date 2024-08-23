@@ -232,7 +232,7 @@ def prompt_choices(mode):
         RAG_Template = rag_template.stepback_rag_template()
         LLM_Template = llm_template.stepback_llm_template()
     elif mode == "augment":
-        Question_Template = question_template.augment_dialogue_prompt_template()
+        Question_Template = question_template.augment_prompt_template()
         RAG_Template = rag_template.augmented_prompt_rag_template()
         LLM_Template = llm_template.augmented_prompt_llm_template()
     elif mode == "literary":
@@ -293,7 +293,7 @@ def seed_prompt_generation(model, documents, numbers, mode:Optional[str] = "sing
     parser = MyParser()
     output = parser.lazy_parse(searching_blob)
 
-    text_splitter = RecursiveCharacterTextSplitter(chunk_size=min(_chunk_size,3000),chunk_overlap=min(_chunk_overlap,300), add_start_index=True,
+    text_splitter = RecursiveCharacterTextSplitter(chunk_size=max(_chunk_size,3000),chunk_overlap=max(_chunk_overlap,300), add_start_index=True,
                                                     length_function=len,is_separator_regex=False)
     output = text_splitter.split_documents(output)
     
@@ -333,9 +333,12 @@ def seed_prompt_generation(model, documents, numbers, mode:Optional[str] = "sing
             if len(question) >= 10:
                 generated_prompts.append(question)
     
-    print(f"问题为{(generated_prompts)}")
+    print(f"问题长度为{len(generated_prompts)}")
+    # 确保长度是与numbers一样，让程序能运行，后期再删除多余数据
+    while len(generated_prompts) != numbers:
+        generated_prompts.append("回答一个关于{file_name}的问题")
     
-    return generated_prompts[:numbers]
+    return generated_prompts
 
 def multi_prompts_generation(model, documents, numbers, seed_questions, rag_inter_answers,running='demo',
                              mode:Optional[str] = "single", literary: Optional[str] = None):
@@ -424,7 +427,7 @@ def retrieve_answer(model, extended_queries, documents, _top_k, _top_p, running=
 
     # Sparse and Dense retrieval
     vector_db = Chroma.from_documents(output, embedding=embedding_function)   
-    retriever = vector_db.as_retriever(search_type="mmr", search_kwargs={"k": 5, "fetch": 30})
+    retriever = vector_db.as_retriever(search_type="mmr", search_kwargs={"k": 5, "fetch_k": 30})
     bm25_retriever = BM25Retriever.from_documents(output)
     bm25_retriever.k = 5
 
@@ -452,7 +455,7 @@ def retrieve_answer(model, extended_queries, documents, _top_k, _top_p, running=
     for index in tqdm(range(n)):
         if mode == "single":
             docs = ensemble_retriever.invoke(f"关于{file_name}，请提供所有与{extended_queries[index]}相关的详细信息和回答。")
-        elif mode == "stepback" and  second_questions is not None:
+        else:
             docs = ensemble_retriever.invoke(f"关于{file_name}，请提供所有与{second_questions[index]}相关的详细信息和回答。")
         reordering = LongContextReorder()
         reordered_docs = reordering.transform_documents(docs)

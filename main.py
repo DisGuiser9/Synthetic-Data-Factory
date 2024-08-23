@@ -24,7 +24,7 @@ def parse_args():
                         help='The file name to be chosen, and will be concated with the original root path')
     
     parser.add_argument('--numbers', type=int, 
-                        default=20,
+                        default=8,
                         help='The number of augmented queries, ranging from [1, 20]')
     
     parser.add_argument('--langcode', type=str, 
@@ -111,11 +111,11 @@ def main():
             
             elif mode == 'literary' or mode == 'augment':
                 seed_prompts = seed_prompt_generation(model, file_path, numbers, mode='single')
-                intermidiate_answers = retrieve_answer(model, seed_prompts, file_path, top_k, top_p, running, mode)
+                intermidiate_answers = retrieve_answer(model, seed_prompts, file_path, top_k, top_p, running, mode='single', second_questions=seed_prompts)
                 second_prompts = multi_prompts_generation(model, file_path, numbers, seed_prompts, intermidiate_answers, running, mode, literary)
                 dialogue = conversation_concat(seed_prompts, intermidiate_answers, numbers, running, mode, second_prompts)
-                rag_content = retrieve_answer(model, dialogue, file_path, top_k, top_p, running, mode, literary)        
-                llm_content = llm_answer(model, dialogue, file_path, top_k, top_p, running, mode, literary, second_prompts)
+                rag_content = retrieve_answer(model, dialogue, file_path, top_k, top_p, running, mode, literary, second_questions=second_prompts)        
+                llm_content = llm_answer(model, dialogue, file_path, top_k, top_p, running, mode, literary)
                 post_processing(seed_prompts, rag_content, llm_content, mode, data_type, dialogue)
         
         elif args.file_name != file_name:

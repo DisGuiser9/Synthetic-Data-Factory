@@ -109,9 +109,9 @@ def stepback_prompt_template():
     return STEP_BACK_PROMPT_TEMPLATE
 
 
-def augment_dialogue_prompt_template():
+def augment_prompt_template():
     """
-    input_variables in chain: file_name, dialogue, context
+    input_variables in chain: file_name, prompt, context
     """
     full_template = """
             {system}
@@ -125,7 +125,7 @@ def augment_dialogue_prompt_template():
     system_prompt = PromptTemplate.from_template(system_template)
 
     instruction_template = """
-                            这是一段对话：{dialogue}，请你按照以下步骤操作：
+                            这是一段对话：{prompt}，请你按照以下步骤操作：
                             1. 理解以上对话内容；
                             2. 参考{context}，生成一个与对话相关的问题
                             """
@@ -143,14 +143,14 @@ def augment_dialogue_prompt_template():
         ("instruction", instruction_prompt),
         ("notice", notice_prompt),
     ]
-    # AUGMENT_DIALOGUE_TEMPLATE = PipelinePromptTemplate(final_prompt=full_template, pipeline_prompts=input_prompts)
-    AUGMENT_DIALOGUE_TEMPLATE = PromptTemplate.from_template(system_template + instruction_template + notice_template)
-    return AUGMENT_DIALOGUE_TEMPLATE
+    # AUGMENT_TEMPLATE = PipelinePromptTemplate(final_prompt=full_template, pipeline_prompts=input_prompts)
+    AUGMENT_TEMPLATE = PromptTemplate.from_template(system_template + instruction_template + notice_template)
+    return AUGMENT_TEMPLATE
 
 
 def literary_prompt_template():
     """
-    input_variables in chain: file_name, literary, context, dialogue;
+    input_variables in chain: file_name, literary, context,;
     literary example: 博客、报纸、教案、 文章
     """
     final_template = """
@@ -172,7 +172,7 @@ def literary_prompt_template():
 
     instruction_template = """
                             请模型按以下步骤一步步完成：
-                            第一步，理解对话内容{dialogue}，并概括对话，长度30字左右；
+                            第一步，理解对话内容{prompt}，并概括对话，长度30字左右；
                             第二步，总结所给内容{context}，总结长度100字左右；
                             第三步，生成一个指令，要求模型生成文体{literary}，并根据所需该文体的核心特征提出要求；
                             最后，组合并生成最后的提示词：
