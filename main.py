@@ -1,4 +1,5 @@
-from utils import *
+# from utils import *
+from synthetic_method import *
 import argparse
 from tqdm import tqdm
 # from evaluation import *
@@ -106,12 +107,17 @@ def main():
         top_p=0.8,
         temperature=0.7,
         tensor_parallel_size=args.nums_gpu,
-
+        repetition_penalty=1.05,
+        restsdasdada=1,
+        dadasaf='dasdasdas no effect kwargs collector'
         # vllm_kwargs={
         #     'repetition_penalty': 1.05
         # }
     )
-
+    # /share149/huggingface/models--Qwen--Qwen2-0.5B/snapshots/ff3a49fac17555b8dfc4db6709f480cc8f16a9fe
+    # /data/share8/huggingface/models--Qwen--Qwen1.5-14B-Chat/snapshots/17e11c306ed235e970c9bb8e5f7233527140cdcf
+    # /data/share9/huggingface/models--Qwen--Qwen1.5-32B-Chat/snapshots/0997b012af6ddd5465d40465a8415535b2f06cfc
+    # /share148/huggingface/models--Qwen--Qwen1.5-32B/snapshots/cefef80dc06a65f89d1d71d0adbc56d335ca2490
     for file_name in files_choices:
         if args.file_name == file_name:
             file_path = os.path.join(directory, file_name)
