@@ -6,7 +6,7 @@
 #    --type 'dpo'\
 #    --mode 'literary'\
 #    --literary '博客'\
-# stepback single
+# stepback single augment
 # 0,1,2,3,4,5,6,7,8,9
 export CUDA_VISIBLE_DEVICES=2,3,4,5,6,7,8,9
 export NUMBER=50
@@ -14,6 +14,6 @@ echo "model-path: $1 nums-gpu: $2 gpus: $CUDA_VISIBLE_DEVICES numbers-per-book: 
 python main.py \
     --model $1 \
     --nums-gpu $2 \
-    --mode stepback \
+    --mode augment \
     --numbers $NUMBER \
     --max-new-tokens 2048

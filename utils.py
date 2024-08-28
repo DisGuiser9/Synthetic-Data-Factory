@@ -420,84 +420,84 @@ def manual_add_chat_template(prompt: PipelinePromptTemplate) -> PipelinePromptTe
 #     return generated_prompts[:numbers]
 
 
-def multi_prompts_generation(model, documents, numbers, seed_questions, rag_inter_answers, running='demo',
-                             mode: Optional[str] = "single", literary: Optional[str] = None):
-    with open(documents, "r", encoding='utf-8') as f:
-        data = []
-        for line in f:
-            data.append(json.loads(line))
-    for data in data:
-        text_string = ""
-        text_string += data["text"]
-    file_length = len(text_string)
-    full_file_name = os.path.split(documents)[1]
-    file_name, _ = os.path.splitext(full_file_name)
-
-    _chunk_size = file_length // (numbers * 10)
-    _chunk_overlap = _chunk_size // 10
-
-    # llm = Ollama(model=model)
-    # llm = VLLM(
-    #     model=model,
-    #     max_new_tokens=512,
-    #     top_k=10,
-    #     top_p=0.8,
-    #     temperature=0.7,
-    # )
-    llm = model
-    embedding_function = get_embeddings_function("zh")
-
-    print("********开始多轮提问*********")
-    searching_blob = Blob.from_path(documents)
-    parser = MyParser()
-    output = parser.lazy_parse(searching_blob)
-
-    text_splitter = RecursiveCharacterTextSplitter(chunk_size=max(_chunk_size, 3000),
-                                                   chunk_overlap=max(_chunk_overlap, 300), add_start_index=True,
-                                                   length_function=len, is_separator_regex=False)
-    output = text_splitter.split_documents(output)
-
-    vector_db = Chroma.from_documents(output, embedding=embedding_function)
-    retriever = vector_db.as_retriever(search_type="mmr", search_kwargs={"k": max(numbers, 20), "fetch_k": 50})
-
-    compressor = FlashrankRerank(top_n=10)
-    compression_retriever = ContextualCompressionRetriever(
-        base_compressor=compressor, base_retriever=retriever
-    )
-
-    dialogues = conversation_concat(seed_questions, rag_inter_answers, numbers, running)  #single模式下先整合前两句对话
-    if type(dialogues) is str:
-        str_results = ''
-        dialogues = [string_processing(dialogue) for dialogue in dialogues.split('<eos>')]
-
-    list_results = []
-    for i in tqdm(range(len(dialogues))):
-        docs = compression_retriever.invoke(
-            f"你认为{dialogues[i]}与本文哪些核心内容有关？请返回更全面的有关信息，并过滤所有无关的、有特定场景的信息。")
-        reordering = LongContextReorder()
-
-        PROMPT_TEMPLATE, _, _ = prompt_choices(mode=mode)
-
-        chain = create_stuff_documents_chain(llm, PROMPT_TEMPLATE) | StrOutputParser()
-        reordered_docs = reordering.transform_documents(docs)
-
-        input_variables_dict = {
-            "single": {"file_name": file_name, "context": reordered_docs, "number": numbers},
-            "augment": {"file_name": file_name, "context": reordered_docs, "prompt": dialogues[i]},
-            "literary": {"file_name": file_name, "context": reordered_docs, "prompt": dialogues[i],
-                         "literary": literary}
-        }
-        input_variables = input_variables_dict.get(mode)
-        input_variables["query"] = "请按要求生成提问"
-        result = chain.invoke(input_variables)
-
-        if running == "terminal":
-            list_results.append(result)
-        else:
-            str_results += result + '<eos>' + '\n\n'
-    return_results = list_results if running == "terminal" else str_results
-
-    return return_results
+# def multi_prompts_generation(model, documents, numbers, seed_questions, rag_inter_answers, running='demo',
+#                              mode: Optional[str] = "single", literary: Optional[str] = None):
+#     with open(documents, "r", encoding='utf-8') as f:
+#         data = []
+#         for line in f:
+#             data.append(json.loads(line))
+#     for data in data:
+#         text_string = ""
+#         text_string += data["text"]
+#     file_length = len(text_string)
+#     full_file_name = os.path.split(documents)[1]
+#     file_name, _ = os.path.splitext(full_file_name)
+#
+#     _chunk_size = file_length // (numbers * 10)
+#     _chunk_overlap = _chunk_size // 10
+#
+#     # llm = Ollama(model=model)
+#     # llm = VLLM(
+#     #     model=model,
+#     #     max_new_tokens=512,
+#     #     top_k=10,
+#     #     top_p=0.8,
+#     #     temperature=0.7,
+#     # )
+#     llm = model
+#     embedding_function = get_embeddings_function("zh")
+#
+#     print("********开始多轮提问*********")
+#     searching_blob = Blob.from_path(documents)
+#     parser = MyParser()
+#     output = parser.lazy_parse(searching_blob)
+#
+#     text_splitter = RecursiveCharacterTextSplitter(chunk_size=max(_chunk_size, 3000),
+#                                                    chunk_overlap=max(_chunk_overlap, 300), add_start_index=True,
+#                                                    length_function=len, is_separator_regex=False)
+#     output = text_splitter.split_documents(output)
+#
+#     vector_db = Chroma.from_documents(output, embedding=embedding_function)
+#     retriever = vector_db.as_retriever(search_type="mmr", search_kwargs={"k": max(numbers, 20), "fetch_k": 50})
+#
+#     compressor = FlashrankRerank(top_n=10)
+#     compression_retriever = ContextualCompressionRetriever(
+#         base_compressor=compressor, base_retriever=retriever
+#     )
+#
+#     dialogues = conversation_concat(seed_questions, rag_inter_answers, numbers, running)  #single模式下先整合前两句对话
+#     if type(dialogues) is str:
+#         str_results = ''
+#         dialogues = [string_processing(dialogue) for dialogue in dialogues.split('<eos>')]
+#
+#     list_results = []
+#     for i in tqdm(range(len(dialogues))):
+#         docs = compression_retriever.invoke(
+#             f"你认为{dialogues[i]}与本文哪些核心内容有关？请返回更全面的有关信息，并过滤所有无关的、有特定场景的信息。")
+#         reordering = LongContextReorder()
+#
+#         PROMPT_TEMPLATE, _, _ = prompt_choices(mode=mode)
+#
+#         chain = create_stuff_documents_chain(llm, PROMPT_TEMPLATE) | StrOutputParser()
+#         reordered_docs = reordering.transform_documents(docs)
+#
+#         input_variables_dict = {
+#             "single": {"file_name": file_name, "context": reordered_docs, "number": numbers},
+#             "augment": {"file_name": file_name, "context": reordered_docs, "prompt": dialogues[i]},
+#             "literary": {"file_name": file_name, "context": reordered_docs, "prompt": dialogues[i],
+#                          "literary": literary}
+#         }
+#         input_variables = input_variables_dict.get(mode)
+#         input_variables["query"] = "请按要求生成提问"
+#         result = chain.invoke(input_variables)
+#
+#         if running == "terminal":
+#             list_results.append(result)
+#         else:
+#             str_results += result + '<eos>' + '\n\n'
+#     return_results = list_results if running == "terminal" else str_results
+#
+#     return return_results
 
 
 # def retrieve_answer(model, extended_queries, documents, _top_k, _top_p, running='demo', mode: Optional[str] = "single",
