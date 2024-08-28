@@ -52,6 +52,11 @@ def parse_args():
                         default='./output_data/',
                         help='The output directory')
 
+    parser.add_argument('--max-new-tokens', type=int,
+                        default=512,
+                        help='The maximum number of new tokens'
+    )
+
     args = parser.parse_args()
     return args
 
@@ -86,8 +91,8 @@ def main():
     numbers = args.numbers
     if args.numbers < 1:
         raise ValueError('The number of augmented queries should be greater than 0')
-    elif args.numbers > 20:
-        numbers = 20
+    # elif args.numbers > 20:
+    #     numbers = 20
 
     top_k = args.top_k
     top_p = args.top_p
@@ -102,14 +107,14 @@ def main():
     files_choices = [os.path.basename(files) for files in files_list]
     model = VLLM(
         model=args.model,
-        max_new_tokens=512,
+        max_new_tokens=args.max_new_tokens,
         top_k=10,
         top_p=0.8,
         temperature=0.7,
         tensor_parallel_size=args.nums_gpu,
         repetition_penalty=1.05,
         restsdasdada=1,
-        dadasaf='dasdasdas no effect kwargs collector'
+        dadasaf=' no effect kwargs collector'
         # vllm_kwargs={
         #     'repetition_penalty': 1.05
         # }
