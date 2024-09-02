@@ -87,7 +87,7 @@ def seed_prompt_generation(model, documents, numbers, mode: Optional[str] = "sin
     print(f"问题数量：{len(generated_prompts)}")
     # 确保长度是与numbers一样，让程序能运行，后期再删除多余数据
     while len(generated_prompts) < numbers:
-        generated_prompts.append("回答一个关于{file_name}的问题")
+        generated_prompts.append(f"回答一个关于{file_name}的问题")
 
     return generated_prompts[:numbers]
 

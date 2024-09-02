@@ -8,12 +8,19 @@
 #    --literary '博客'\
 # stepback single augment
 # 0,1,2,3,4,5,6,7,8,9
-export CUDA_VISIBLE_DEVICES=2,3,4,5,6,7,8,9
+# /data/share9/zwh/XPT/ms-swift/output/qwen1half-32b-chat/v3-20240819-131540/checkpoint-83-merged
+#
+
+#
+export VLLM_WORKER_MULTIPROC_METHOD=spawn
+export CUDA_VISIBLE_DEVICES=2,3
 export NUMBER=50
-echo "model-path: $1 nums-gpu: $2 gpus: $CUDA_VISIBLE_DEVICES numbers-per-book: $NUMBER"
+echo "chosen-model-path: $1 rejected-model-path: $2 chosen-nums-gpu: $3 rejected-nums-gpu: $4 gpus: $CUDA_VISIBLE_DEVICES numbers-per-book: $NUMBER"
 python main.py \
-    --model $1 \
-    --nums-gpu $2 \
-    --mode augment \
+    --chosen-model $1 \
+    --rejected-model $2 \
+    --chosen-nums-gpu $3 \
+    --rejected-nums-gpu $4 \
+    --mode stepback \
     --numbers $NUMBER \
     --max-new-tokens 2048
